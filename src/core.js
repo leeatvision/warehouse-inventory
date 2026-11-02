@@ -291,13 +291,71 @@ function openModal(kind, params = {}) { S.modal = { kind, ...params }; renderMod
 function closeModal() { S.modal = null; renderModal(); }
 const MODALS = {};
 
-function topbar() {
-  const logo = B.logo ? `<img class="logo" src="${esc(B.logo)}" alt="">` : '';
-  return `<header class="top">${logo}<span class="app-name">${esc(B.shortName || B.name || 'Warehouse')}</span>
-    ${S.snap && S.snap.settings.branch && S.snap.settings.branch.code ? `<span class="pill brand">${esc(S.snap.settings.branch.code)}</span>` : ''}
-    <span id="status">${statusPill()}</span>
-    <span class="who">${S.user ? `<b>${esc(S.user.name)}</b>${isManager() ? '<span class="pill">Manager</span>' : ''}
-      <button class="btn small" data-act="logout">Log out</button>` : ''}</span></header>`;
+// ------------------------------------------------------------------ icons (stroke, 24px grid)
+const ICON_PATHS = {
+  home: '<path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/>',
+  cart: '<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.4 11.2a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.5L22 7H6"/>',
+  box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
+  back: '<path d="m15 6-6 6 6 6"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+  swap: '<path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/>',
+  tool: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
+};
+const icon = (name, size = 24, extra = '') => `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${ICON_PATHS[name] || ''}</svg>`;
+const initials = name => String(name || '?').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const isWide = () => matchMedia('(min-width: 760px)').matches;
+const isDesk = () => matchMedia('(min-width: 1400px)').matches;
+
+// ------------------------------------------------------------------ the frame: side menu (tablet, desktop), bottom bar and header (phone)
+const NAV_MAIN = [['home', 'Home', 'home'], ['cart', 'Cart', 'cart'], ['catalogue', 'Catalogue', 'box'], ['entries', 'Entries', 'list'], ['more', 'More', 'menu']];
+const NAV_GROUPS = [
+  ['Stock', [['receive', 'Receive delivery'], ['adjust', 'Adjust counts'], ['counts', 'Stock counts']]],
+  ['Jobs and orders', [['picks', 'Pick lists'], ['pos', 'Purchase orders'], ['supplierReturn', 'Supplier returns']]],
+  ['Office', [['alerts', 'Alerts'], ['reports', 'Reports'], ['people', 'People and PINs'], ['setup2', 'Locations and fields'], ['status', 'Device and billing']]],
+];
+const SECTION_OF = { review: 'cart', pick: 'more', count: 'more', countReview: 'more', poEdit: 'more', pickEdit: 'more' };
+function navSection() { return SECTION_OF[S.screen] || S.screen; }
+function navCount(to) {
+  if (to === 'cart') return S.cart && S.cart.lines.length ? S.cart.lines.length : '';
+  if (!isManager()) return '';
+  if (to === 'alerts') { const n = alertList().length; return n || ''; }
+  if (to === 'picks') return V().picks.filter(p => p.status === 'open').length || '';
+  if (to === 'counts') return V().counts.filter(c => c.status === 'open' || c.status === 'submitted').length || '';
+  return '';
+}
+function logoHtml(cls = '') { return B.logo ? `<img class="logo ${cls}" src="${esc(B.logo)}" alt="">` : ''; }
+function sideNav() {
+  const cur = navSection(); const desk = isDesk();
+  const main = NAV_MAIN.filter(([to]) => !(desk && to === 'more'));
+  const groups = desk && isManager() ? NAV_GROUPS.map(([h, items]) => `<span class="nav-h">${h}</span>${items.map(([to, label]) =>
+    `<a href="#" class="nav-i ${cur === to ? 'on' : ''}" data-act="go" data-to="${to}"><span class="nav-l">${label}</span><span class="nav-c">${navCount(to)}</span></a>`).join('')}`).join('') : '';
+  return `<nav class="side" aria-label="Main">
+    <div class="side-brand">${logoHtml()}<span class="side-name">${esc(B.shortName || 'Warehouse')}</span></div>
+    ${main.map(([to, label, ic]) => `<a href="#" class="nav-i ${cur === to ? 'on' : ''}" data-act="go" data-to="${to}" ${cur === to ? 'aria-current="page"' : ''}>
+      ${icon(ic)}<span class="nav-l">${label}</span><span class="nav-c">${navCount(to)}</span></a>`).join('')}
+    ${groups}
+    <span class="grow"></span>
+    <div class="side-foot"><span id="status">${statusPill()}</span>
+      <button class="me" data-act="logout" title="Sign out ${esc(S.user.name)}"><span class="avatar">${esc(initials(S.user.name))}</span>
+      <span class="me-t"><b>${esc(S.user.name)}</b><span>${isManager() ? 'Manager · ' : ''}Sign out</span></span></button></div>
+  </nav>`;
+}
+function bottomNav() {
+  const cur = navSection();
+  return `<nav class="bottom" aria-label="Main">${NAV_MAIN.filter(([to]) => to !== 'entries').map(([to, label, ic]) =>
+    `<a href="#" class="${cur === to ? 'on' : ''}" data-act="go" data-to="${to}" ${cur === to ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${navCount(to) && to === 'cart' ? `<i class="dot">${navCount(to)}</i>` : ''}</a>`).join('')}</nav>`;
+}
+function phoneHead() {
+  return `<header class="phead">${logoHtml()}<span class="side-name">${esc(B.shortName || 'Warehouse')}</span>
+    <span id="status-p">${statusPill()}</span><span class="grow"></span>
+    ${S.user ? `<button class="avatar" data-act="go" data-to="more" aria-label="${esc(S.user.name)}, menu">${esc(initials(S.user.name))}</button>` : ''}</header>`;
 }
 function statusPill() {
   const n = S.outbox.length;
@@ -307,11 +365,15 @@ function statusPill() {
   if (S.lastSync) return `<span class="pill ok">Up to date</span>`;
   return '';
 }
-function updateStatus() { const el = $('#status'); if (el) el.innerHTML = statusPill(); }
+function updateStatus() { for (const id of ['#status', '#status-p']) { const el = $(id); if (el) el.innerHTML = statusPill(); } }
 
 function render() {
   const fn = SCREENS[S.screen] || SCREENS.home;
-  $('#app').innerHTML = (S.screen === 'setup' || S.screen === 'boot' ? '' : topbar()) + `<main>${fn()}</main>`;
+  const bare = S.screen === 'setup' || S.screen === 'boot';
+  const noBottom = ['cart', 'review', 'pick', 'count'].includes(S.screen);
+  $('#app').innerHTML = bare ? `<main class="bare">${fn()}</main>`
+    : `<div class="shell ${S.user ? 'in' : 'out'} ${noBottom ? 'no-bottom' : ''}">${S.user ? sideNav() : ''}
+        <div class="page">${phoneHead()}<main class="main screen-${esc(S.screen)}">${fn()}</main></div>${S.user ? bottomNav() : ''}</div>`;
   renderModal();
   const af = $('[data-autofocus]'); if (af && matchMedia('(min-width: 860px)').matches) af.focus();
 }
@@ -328,15 +390,21 @@ function rerenderSoft() {
   if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) { updateStatus(); return; }
   if (S.modal) { updateStatus(); return; }
   // Screens holding a draft are left alone; the rest redraw with the new data.
-  const drafts = ['cart', 'pick', 'count', 'poEdit', 'pickEdit', 'receive', 'adjust', 'supplierReturn', 'reports', 'countReview', 'setup'];
+  const drafts = ['cart', 'review', 'pick', 'count', 'poEdit', 'pickEdit', 'receive', 'adjust', 'supplierReturn', 'reports', 'countReview', 'setup'];
   if (drafts.includes(S.screen)) updateStatus(); else render();
 }
-function modal(title, body, footer = '', wide = false) {
-  return `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" data-stop>
+function modal(title, body, footer = '', wide = false, cls = '') {
+  return `<div class="modal ${wide ? 'wide' : ''} ${cls}" role="dialog" aria-modal="true" data-stop>
     <header><h2>${title}</h2><button class="btn small ghost" data-act="close" aria-label="Close">✕</button></header>
     <div class="body">${body}</div>${footer ? `<footer>${footer}</footer>` : ''}</div>`;
 }
-function back(label = 'Home', to = 'home') { return `<button class="btn small" data-act="go" data-to="${to}">‹ ${label}</button>`; }
+function back(label = 'Home', to = 'home') { return `<button class="back" data-act="go" data-to="${to}" aria-label="Back to ${esc(label)}">${icon('back')}<span>${esc(label)}</span></button>`; }
+// A screen's title row: optional back button, title, actions on the right.
+function pageHead(title, actions = '', backTo = null, backLabel = 'Home') {
+  return `<div class="head">${backTo ? back(backLabel, backTo) : ''}<h1>${title}</h1>${actions ? `<div class="head-act">${actions}</div>` : ''}</div>`;
+}
+// Redraw when the window crosses a layout breakpoint (phone, tablet, desktop).
+['(min-width: 760px)', '(min-width: 1400px)'].forEach(q => matchMedia(q).addEventListener('change', () => { if (S.screen !== 'boot') render(); }));
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
@@ -352,7 +420,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && S.modal) closeModal();
 });
 
-ACT.go = d => go(d.to, { ...d });
+ACT.go = d => { const { act, to, ...rest } = d; go(to, rest); };
 ACT.close = () => closeModal();
 ACT.logout = () => signOut();
 

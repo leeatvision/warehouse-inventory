@@ -46,7 +46,7 @@ ACT.ipEnter = () => { const it = itemByCode(S.modal.q); if (it) S.modal.onPick(i
 SCREENS.receive = () => {
   S.le = S.le || {}; const ed = S.le.receive || (S.le.receive = { lines: [], note: '', po_id: null });
   const pos = V().pos.filter(p => p.status === 'open' || p.status === 'partial');
-  return `<div class="head">${back()}<h1>Receive delivery</h1></div><div class="stack">
+  return `<div class="head">${back('More', 'more')}<h1>Receive delivery</h1></div><div class="stack">
     <div class="panel pad grid2"><label class="f">Purchase order<select data-ch="rcvPo"><option value="">No PO</option>${pos.map(p => `<option value="${p.id}" ${ed.po_id === p.id ? 'selected' : ''}>PO ${p.number} · ${esc(p.supplier)}</option>`).join('')}</select></label>
       <label class="f">Note (e.g. packing slip number)<input type="text" value="${esc(ed.note)}" data-in="leNote" data-key="receive"></label></div>
     ${lineEditor('receive', { qtyLabel: 'Received', note: true })}
@@ -59,11 +59,11 @@ CH.rcvPo = v => {
   render();
 };
 IN.leNote = (v, d) => { S.le[d.key].note = v; };
-SCREENS.adjust = () => `<div class="head">${back()}<h1>Adjust counts</h1></div><div class="stack">
+SCREENS.adjust = () => `<div class="head">${back('More', 'more')}<h1>Adjust counts</h1></div><div class="stack">
   <p class="muted">Enter what is really on the shelf. The difference is recorded with the reason. Adjustments never go to billing.</p>
   ${lineEditor('adjust', { qtyLabel: 'New count', reason: true })}
   <div class="row"><span class="grow"></span><button class="btn primary" data-act="saveLe" data-key="adjust">Save counts</button></div></div>`;
-SCREENS.supplierReturn = () => `<div class="head">${back()}<h1>Supplier return</h1></div><div class="stack">
+SCREENS.supplierReturn = () => `<div class="head">${back('More', 'more')}<h1>Supplier return</h1></div><div class="stack">
   <p class="muted">Material from a Job code going straight back to the supplier. It never comes into the warehouse, so Stock does not change.</p>
   ${lineEditor('supplierReturn', { qtyLabel: 'Quantity', job: true, note: true })}
   <label class="f">Note<input type="text" value="${esc((S.le && S.le.supplierReturn && S.le.supplierReturn.note) || '')}" data-in="leNote" data-key="supplierReturn"></label>
@@ -81,7 +81,7 @@ ACT.saveLe = async d => {
 // ------------------------------------------------------------------ purchase orders
 SCREENS.pos = () => {
   const pos = V().pos;
-  return `<div class="head">${back()}<h1>Purchase orders</h1><button class="btn small primary" data-act="editPo">New PO</button></div>
+  return `<div class="head">${back('More', 'more')}<h1>Purchase orders</h1><button class="btn small primary" data-act="editPo">New PO</button></div>
     <div class="panel"><div class="list">${pos.map(p => `<div class="li"><span class="grow"><span class="t">PO ${p.number} · ${esc(p.supplier || 'No supplier')}</span>
       <div class="s">${({ open: 'Open', partial: 'Partly received', received: 'Received', cancelled: 'Cancelled' })[p.status]} · ${plural(p.lines.length, 'line')} · ${fmtD(p.created_at)}</div></span>
       <button class="btn small" data-act="printPo" data-id="${p.id}">Print</button><button class="btn small" data-act="csvPo" data-id="${p.id}">CSV</button>
@@ -210,7 +210,7 @@ function alertList() {
 }
 SCREENS.alerts = () => {
   const a = alertList();
-  return `<div class="head">${back()}<h1>Alerts</h1></div><div class="panel"><div class="list">${a.map(x => `<button class="li" ${x.item ? `data-act="openItem" data-id="${x.item}"` : x.to ? `data-act="go" data-to="${x.to}"` : ''}>
+  return `<div class="head">${back('More', 'more')}<h1>Alerts</h1></div><div class="panel"><div class="list">${a.map(x => `<button class="li" ${x.item ? `data-act="openItem" data-id="${x.item}"` : x.to ? `data-act="go" data-to="${x.to}"` : ''}>
     <span class="pill ${x.kind}">${x.kind === 'bad' ? '!' : '•'}</span><span class="grow"><span class="t">${esc(x.text)}</span><div class="s">${esc(x.sub)}</div></span></button>`).join('') || '<div class="empty">Nothing needs a look.</div>'}</div></div>`;
 };
 
@@ -225,24 +225,28 @@ SCREENS.reports = () => {
   if (!p.to) p.to = new Date().toISOString().slice(0, 10);
   const needsDates = !['stock', 'low'].includes(p.kind);
   const saved = S.snap.reports || [];
-  return `<div class="head">${back()}<h1>Reports</h1></div><div class="stack">
-    <div class="panel pad stack">
-      <div class="row"><select data-ch="rpF" data-f="kind" style="width:auto">${Object.entries(REPORTS).map(([k, t]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
-        ${needsDates ? `<label class="row small nowrap">From <input type="date" value="${p.from}" data-ch="rpF" data-f="from" style="width:auto"></label>
-        <label class="row small nowrap">To <input type="date" value="${p.to}" data-ch="rpF" data-f="to" style="width:auto"></label>` : ''}</div>
-      <div class="row">
-        <select data-ch="rpF" data-f="user" style="width:auto"><option value="">Everyone</option>${[...V().users.values()].map(u => `<option value="${u.id}" ${String(p.user) === String(u.id) ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>
-        <button class="jobchip ${p.job ? 'set' : ''}" data-act="rpJob">${p.job ? esc(jobLabel(p.job)) : 'Any Job code'}</button>${p.job ? '<button class="btn tiny ghost" data-act="rpClear" data-f="job">✕</button>' : ''}
-        <select data-ch="rpF" data-f="loc" style="width:auto"><option value="">Any location</option>${[...V().locations.values()].map(l => `<option value="${l.id}" ${p.loc === l.id ? 'selected' : ''}>${esc(locPath(l.id))}</option>`).join('')}</select>
-        <input type="text" placeholder="Tag" value="${esc(p.tag || '')}" data-ch="rpF" data-f="tag" style="width:120px">
-        <button class="jobchip ${p.item ? 'set' : ''}" data-act="rpItem">${p.item ? esc((item(p.item) || {}).name || 'Item') : 'Any item'}</button>${p.item ? '<button class="btn tiny ghost" data-act="rpClear" data-f="item">✕</button>' : ''}
+  const kinds = isDesk() ? `<div class="rep-kinds">${Object.entries(REPORTS).map(([k, t]) => `<button class="nav-i ${p.kind === k ? 'on' : ''}" aria-pressed="${p.kind === k}" data-act="rpKind" data-k="${k}"><span class="nav-l">${t}</span></button>`).join('')}
+      ${saved.length ? `<span class="nav-h">Saved</span>${saved.map(r => `<button class="nav-i" data-act="rpLoadBtn" data-id="${r.id}"><span class="nav-l">${esc(r.name)}</span></button>`).join('')}` : ''}</div>`
+    : `<select data-ch="rpF" data-f="kind" aria-label="Report" class="rep-sel">${Object.entries(REPORTS).map(([k, t]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  return `${pageHead('Reports', '', isWide() ? null : 'more', 'More')}<div class="rep ${isDesk() ? 'desk' : ''}">${isDesk() ? kinds : ''}
+    <section class="rep-main">
+      <div class="filters">${isDesk() ? '' : kinds}
+        ${needsDates ? `<label class="filt">From <input type="date" value="${p.from}" data-ch="rpF" data-f="from"></label>
+        <label class="filt">To <input type="date" value="${p.to}" data-ch="rpF" data-f="to"></label>` : ''}
+        <label class="filt">Person <select data-ch="rpF" data-f="user"><option value="">Everyone</option>${[...V().users.values()].map(u => `<option value="${u.id}" ${String(p.user) === String(u.id) ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+        <span class="filt">Job code <button class="link" data-act="rpJob">${p.job ? esc(jobLabel(p.job)) : 'Any'}</button>${p.job ? `<button class="icon-x" data-act="rpClear" data-f="job" aria-label="Clear Job code">${icon('x', 16)}</button>` : ''}</span>
+        ${V().locations.size ? `<label class="filt">Location <select data-ch="rpF" data-f="loc"><option value="">Any</option>${[...V().locations.values()].map(l => `<option value="${l.id}" ${p.loc === l.id ? 'selected' : ''}>${esc(locPath(l.id))}</option>`).join('')}</select></label>` : ''}
+        <label class="filt">Tag <input type="text" value="${esc(p.tag || '')}" data-ch="rpF" data-f="tag" placeholder="Any" size="8"></label>
+        <span class="filt">Item <button class="link" data-act="rpItem">${p.item ? esc((item(p.item) || {}).name || 'Item') : 'Any'}</button>${p.item ? `<button class="icon-x" data-act="rpClear" data-f="item" aria-label="Clear item">${icon('x', 16)}</button>` : ''}</span>
       </div>
-      <div class="row"><button class="btn primary" data-act="runReport">Run</button><button class="btn" data-act="rpCsv">CSV</button><button class="btn" data-act="rpPrint">Print / PDF</button>
-        <span class="grow"></span><button class="btn small" data-act="rpSave">Save as…</button>
-        ${saved.length ? `<select data-ch="rpLoad" style="width:auto"><option value="">Saved reports</option>${saved.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>` : ''}</div>
-    </div>
-    <div class="panel">${region('rpOut', () => S.report ? reportTable(S.report) : '<div class="empty">Choose a report and press Run.</div>')}</div></div>`;
+      <div class="row"><button class="btn primary" data-act="runReport">Run</button><span class="grow"></span>
+        <button class="btn" data-act="rpSave">Save as…</button><button class="btn" data-act="rpPrint">Print or PDF</button><button class="btn" data-act="rpCsv">Export CSV</button>
+        ${!isDesk() && saved.length ? `<select data-ch="rpLoad" aria-label="Saved reports"><option value="">Saved reports</option>${saved.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>` : ''}</div>
+      ${region('rpOut', () => S.report ? reportTable(S.report) : '<div class="empty card flat">Choose a report and press Run.</div>')}
+    </section></div>`;
 };
+ACT.rpKind = d => { S.params.kind = d.k; S.report = null; render(); };
+ACT.rpLoadBtn = d => CH.rpLoad(d.id);
 CH.rpF = (v, d) => { S.params[d.f] = v; if (d.f === 'kind') { S.report = null; render(); } };
 ACT.rpJob = () => openModal('job', { onPick: id => { S.params.job = id; setTimeout(render); } });
 ACT.rpItem = () => openModal('itemPick', { q: '', onPick: id => { S.params.item = id; closeModal(); render(); } });
@@ -316,7 +320,7 @@ async function buildReport(p) {
 }
 function reportTable(r) {
   const n = new Set(r.num || []);
-  return `<div class="pad small muted" style="padding-bottom:0">${esc(r.title)} · ${plural(r.rows.length, 'row')}</div><div class="table-wrap"><table class="t"><thead><tr>${r.head.map((h, i) => `<th class="${n.has(i) ? 'right' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
+  return `<p class="muted sub">${esc(r.title)} · ${plural(r.rows.length, 'row')}</p><div class="card flat table-wrap"><table class="t"><thead><tr>${r.head.map((h, i) => `<th class="${n.has(i) ? 'right' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
     <tbody>${r.rows.slice(0, 2000).map(row => `<tr>${row.map((c, i) => `<td class="${n.has(i) ? 'n' : ''}">${esc(c)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.head.length}" class="muted">Nothing in this period.</td></tr>`}</tbody></table></div>`;
 }
 ACT.rpCsv = () => { if (!S.report) return toast('Run the report first'); downloadCsv(`${S.report.title} ${S.params.from || ''}.csv`.trim(), [S.report.head, ...S.report.rows]); };
@@ -324,7 +328,7 @@ ACT.rpPrint = () => { if (!S.report) return toast('Run the report first'); const
   printHtml(`<h1>${esc(r.title)}</h1><p>${['stock', 'low'].includes(S.params.kind) ? fmtD(new Date().toISOString()) : esc(S.params.from + ' to ' + S.params.to)}</p><table><thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row => `<tr>${row.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`); };
 
 // ------------------------------------------------------------------ people and PINs
-SCREENS.people = () => `<div class="head">${back()}<h1>People and PINs</h1></div>
+SCREENS.people = () => `<div class="head">${back('More', 'more')}<h1>People and PINs</h1></div>
   <p class="muted small" style="margin-bottom:8px">The list comes from QuickBooks Time. New hires appear on their own; people who leave disappear.</p>
   <div class="panel"><div class="list">${[...V().users.values()].map(u => `<div class="li" style="cursor:default"><span class="grow"><span class="t">${esc(u.name)}</span>
     <div class="s">${u.role === 'manager' ? 'Manager' : 'User'} · ${u.hash ? 'Has a PIN' : 'No PIN yet'}</div></span>
@@ -340,7 +344,7 @@ ACT.toggleRole = async d => {
 SCREENS.setup2 = () => {
   const locs = [...V().locations.values()].sort((a, b) => locPath(a.id).localeCompare(locPath(b.id)));
   const fields = [...V().fields.values()].sort((a, b) => a.sort - b.sort);
-  return `<div class="head">${back()}<h1>Locations and fields</h1></div><div class="cols">
+  return `<div class="head">${back('More', 'more')}<h1>Locations and fields</h1></div><div class="cols">
     <section class="panel"><div class="pad row"><h2 class="grow">Locations</h2><button class="btn small primary" data-act="editLoc">Add</button></div>
       <div class="list">${locs.map(l => `<button class="li" data-act="editLoc" data-id="${l.id}"><span class="grow"><span class="t">${esc(locPath(l.id))}</span>${l.archived ? '<div class="s">Archived</div>' : ''}</span></button>`).join('') || '<div class="empty">No locations yet. Add areas, shelves and bins.</div>'}</div></section>
     <section class="panel"><div class="pad row"><h2 class="grow">Custom fields</h2><button class="btn small primary" data-act="editField">Add</button></div>
@@ -372,7 +376,7 @@ ACT.saveField = async () => { const x = S.modal.x; if (!x.name.trim()) return to
 // ------------------------------------------------------------------ device, sending and billing delivery
 SCREENS.status = () => {
   const dl = (S.snap && S.snap.delivery) || {};
-  return `<div class="head">${back()}<h1>Device and delivery</h1><button class="btn small" data-act="syncNow">Send and refresh now</button></div><div class="cols">
+  return `<div class="head">${back('More', 'more')}<h1>Device and delivery</h1><button class="btn small" data-act="syncNow">Send and refresh now</button></div><div class="cols">
     <section class="panel pad stack"><h2>This device</h2><dl class="kv">
       <dt>Connection</dt><dd>${S.lastError ? 'Offline: ' + esc(S.lastError) : S.lastSync ? 'Online, updated ' + ago(S.lastSync) : 'Not connected yet'}</dd>
       <dt>Waiting to send</dt><dd>${plural(S.outbox.length, 'entry', 'entries')}</dd>
