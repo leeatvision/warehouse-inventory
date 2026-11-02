@@ -190,6 +190,7 @@ try {
   });
   await step('worker sign-in has no Manager tools', async () => {
     await tap(page, '[data-act=logout]'); await signIn(page, 'Sam Worker', '1357'); await shot(page, '27-home-user');
+    if (await page.locator('[data-act=homeScope]').count()) throw new Error('worker sees everyone\'s entries');
     await nav(page, 'more'); await settle(page);
     if (await page.locator('[data-to=receive]').count()) throw new Error('worker sees Manager tools');
   });
@@ -197,6 +198,12 @@ try {
   await step('phone screens', async () => {
     await connect(phone); await shot(phone, '30-phone-signin');
     await signIn(phone, 'Alex Manager', '2468'); await shot(phone, '31-phone-home');
+    const rows = await phone.locator('.entries-widget .row-i').count();
+    if (rows < 1 || rows > 5) throw new Error('phone entries box should show 1 to 5 entries, shows ' + rows);
+    if (!(await phone.locator('.entries-widget .row-i').first().innerText()).includes('Alex Manager')) throw new Error('entries box does not say who');
+    await tap(phone, '[data-act=homeScope][data-s=mine]'); await settle(phone); await shot(phone, '31b-phone-home-mine'); await tap(phone, '[data-act=homeScope][data-s=all]');
+    await tap(phone, '.entries-widget .see-all'); await phone.waitForSelector('text=All Carts'); await nav(phone, 'home');
+    const top = await phone.evaluate(() => document.querySelector('.phead').getBoundingClientRect().top); if (top < 0) throw new Error('header starts off screen');
     await tap(phone, '.hero'); await tap(phone, '.job-card'); await job(phone, 'smith');
     await phone.fill('[data-in=cartQ]', 'wire'); await settle(phone); await shot(phone, '32a-phone-search');
     await tap(phone, '#finder .row-i'); await settle(phone);
@@ -212,6 +219,7 @@ try {
   const desk = await newPage(D); cur = desk;
   await step('desktop screens', async () => {
     await connect(desk); await signIn(desk, 'Alex Manager', '2468'); await shot(desk, '40-desk-home');
+    const drows = await desk.locator('.entries-widget tbody tr.click').count(); if (drows < 1 || drows > 8) throw new Error('desktop entries box shows ' + drows);
     await tap(desk, '.side [data-to=catalogue]'); await settle(desk); await tap(desk, '#catList tr.click'); await settle(desk); await shot(desk, '41-desk-catalogue');
     await tap(desk, '.side [data-to=reports]'); await tap(desk, '[data-act=runReport]'); await desk.waitForSelector('#rpOut table'); await shot(desk, '42-desk-reports');
     await tap(desk, '.side [data-to=cart]'); await settle(desk); await shot(desk, '43-desk-cart');

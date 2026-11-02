@@ -158,20 +158,21 @@ SCREENS.home = () => {
         </div>
         ${openPicks || myCounts ? `<div class="actions">${openPicks ? card('picks', 'list', 'Pick lists', `${plural(openPicks, 'list')} ready to pick`) : ''}${myCounts ? card('counts', 'box', 'Stock counts', `${plural(myCounts, 'count')} waiting for you`) : ''}</div>` : ''}
         ${alerts.length && !isWide() ? `<button class="banner warn" data-act="go" data-to="alerts">${icon('alert', 20)}<span class="grow">${plural(alerts.length, 'thing needs', 'things need')} a look</span><b>View</b></button>` : ''}
-        ${desk ? deskToday() : ''}
+        ${desk ? deskStats() : ''}
       </div>
       <div class="stack-l">
         ${alerts.length && isWide() ? `<section class="sec"><h2 class="sec-h">Needs a look</h2><div class="card flat list">${alerts.slice(0, 5).map(alertRow).join('')}
           ${alerts.length > 5 ? `<button class="row-i" data-act="go" data-to="alerts"><span class="grow t">See all ${alerts.length}</span>${icon('chevron', 18, 'class="ico chev"')}</button>` : ''}</div></section>` : ''}
-        <section class="sec"><h2 class="sec-h">Your recent carts</h2>${recent.length ? `<div class="card flat list">${recentRows(recent)}</div>` : '<div class="empty card flat">Nothing yet. Tap Take out or return to start.</div>'}</section>
+        ${desk ? '' : entriesWidget()}
       </div>
-    </div></div>`;
+    </div>${desk ? `<div class="home-wide">${entriesWidget()}</div>` : ''}</div>`;
 };
 function alertRow(a) {
   return `<button class="row-i" ${a.item ? `data-act="openItem" data-id="${a.item}"` : a.to ? `data-act="go" data-to="${a.to}"` : ''}>
     <span class="dot-s ${a.kind}"></span><span class="grow"><span class="t">${esc(a.text)}</span><span class="s">${esc(a.sub)}</span></span></button>`;
 }
-function deskToday() {
+// Summary cards for Managers on desktop.
+function deskStats() {
   const day = new Date().toDateString();
   const carts = (S.snap.carts || []).filter(c => new Date(c.received_at).toDateString() === day);
   const items = carts.reduce((n, c) => n + c.lines.length + c.equipment.length, 0);
@@ -183,13 +184,37 @@ function deskToday() {
       ${stat('catalogue?stock=low', 'Low stock', low, 'At or under their level', low ? 'warn' : '')}
       ${stat('catalogue?stock=out', 'Equipment out', V().checkouts.length, 'Checked out now')}
       ${stat('status', 'Billing PDFs', dl.waiting ? dl.waiting + ' waiting' : 'Up to date', dl.last_delivered ? 'Last sent ' + fmtDT(dl.last_delivered) : 'None sent yet', dl.waiting ? 'warn' : 'ok')}
-    </div>
-    <section class="sec"><div class="sec-row"><h2 class="sec-h">Today</h2><a href="#" data-act="go" data-to="reports">All activity</a></div>
-      <div class="card flat table-wrap"><table class="t"><thead><tr><th>Time</th><th>Who</th><th>What</th><th>Job code</th><th class="right">Lines</th></tr></thead>
-      <tbody>${carts.map(c => `<tr class="click" data-act="openCart" data-id="${c.id}"><td class="muted nowrap">${fmtDT(c.received_at)}</td><td class="nowrap">${esc(userName(c.on_behalf_of || c.entered_by))}</td>
-        <td>${[...new Set([...c.lines, ...c.equipment].map(l => l.kind))].map(k => `<span class="tag ${k}">${MODES[k]}</span>`).join(' ')}</td><td>${esc(cartJobs(c))}</td><td class="n">${c.lines.length + c.equipment.length}</td></tr>`).join('')
-        || '<tr><td colspan="5" class="muted">No Carts yet today.</td></tr>'}</tbody></table></div></section>`;
+    </div>`;
 }
+// The entries box on Home. Managers see everyone's Carts (with a switch to their own); others see their own.
+let homeScope = null;
+function entriesWidget() {
+  const mgr = isManager(); const scope = mgr ? (homeScope || 'all') : 'mine';
+  const me = S.user.id; const limit = isDesk() ? 8 : isWide() ? 6 : 5;
+  const all = (S.snap.carts || []).filter(c => scope === 'all' || c.entered_by === me || c.on_behalf_of === me);
+  const pend = V().pendingCarts.filter(o => scope === 'all' || o.user_id === me || (o.data && o.data.on_behalf_of === me));
+  const list = all.slice(0, Math.max(0, limit - pend.length));
+  const who = c => userName(c.on_behalf_of || c.entered_by);
+  const status = c => c.cancelled ? '<span class="pill bad">Cancelled</span>' : c.corrections ? '<span class="pill">Corrected</span>' : '';
+  const kinds = c => [...new Set([...c.lines, ...c.equipment].map(l => l.kind))].map(k => `<span class="tag ${k}">${MODES[k]}</span>`).join(' ');
+  const pendRows = pend.slice(0, limit).map(o => `<div class="row-i static"><span class="grow"><span class="t">Waiting to send</span>
+    <span class="s">${esc(userName((o.data && o.data.on_behalf_of) || o.user_id))} · ${plural((o.data.lines || []).length, 'item')}</span></span><span class="pill warn">Not sent yet</span></div>`).join('');
+  const body = isDesk()
+    ? `<div class="card flat table-wrap"><table class="t"><thead><tr><th>When</th>${scope === 'all' ? '<th>Who</th>' : ''}<th>What</th><th>Job code</th><th class="right">Lines</th><th></th></tr></thead>
+      <tbody>${list.map(c => `<tr class="click" data-act="openCart" data-id="${c.id}"><td class="muted nowrap">${fmtDT(c.received_at)}</td>${scope === 'all' ? `<td class="nowrap">${esc(who(c))}</td>` : ''}
+        <td>${kinds(c)}</td><td>${esc(cartJobs(c))}</td><td class="n">${c.lines.length + c.equipment.length}</td><td>${status(c)}</td></tr>`).join('')
+        || `<tr><td colspan="6" class="muted">No Carts in the last 2 weeks.</td></tr>`}</tbody></table></div>`
+    : `<div class="card flat list">${pendRows}${list.map(c => `<button class="row-i" data-act="openCart" data-id="${c.id}"><span class="grow"><span class="t clip">${esc(cartJobs(c))}</span>
+        <span class="s">${scope === 'all' ? esc(who(c)) + ' · ' : ''}Cart ${c.id} · ${plural(c.lines.length + c.equipment.length, 'item')}</span></span>
+        <span class="ent-r">${status(c)}<span class="s nowrap">${fmtDT(c.received_at)}</span></span></button>`).join('')}
+        ${!list.length && !pend.length ? `<div class="empty">${scope === 'all' ? 'No Carts in the last 2 weeks.' : 'Nothing yet. Tap Take out or return to start.'}</div>` : ''}</div>`;
+  return `<section class="sec entries-widget"><div class="sec-row"><h2 class="sec-h">${mgr ? 'Latest entries' : 'Your recent carts'}</h2>
+      ${mgr ? `<div class="seg small" role="tablist" aria-label="Whose entries"><button role="tab" aria-selected="${scope === 'all'}" class="${scope === 'all' ? 'on' : ''}" data-act="homeScope" data-s="all">Everyone</button>
+        <button role="tab" aria-selected="${scope === 'mine'}" class="${scope === 'mine' ? 'on' : ''}" data-act="homeScope" data-s="mine">Mine</button></div>` : ''}</div>
+    ${body}
+    <a href="#" class="see-all" data-act="go" data-to="entries" ${scope === 'all' ? 'data-all="1"' : ''}>See all ${scope === 'all' ? 'entries' : 'my entries'}</a></section>`;
+}
+ACT.homeScope = d => { homeScope = d.s; render(); };
 
 // ------------------------------------------------------------------ more (phone and tablet: everything not in the bottom bar)
 SCREENS.more = () => {
