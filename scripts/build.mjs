@@ -27,6 +27,8 @@ for (const f of ['brand.css', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.
   if (!existsSync(join(brandDir, f))) { console.error(`${relative(root, brandDir)}/${f} is missing`); process.exit(1); }
   cpSync(join(brandDir, f), join(out, f));
 }
+// Tab icon: the brand's own favicon.png if it has one, otherwise the home-screen icon.
+cpSync(join(brandDir, existsSync(join(brandDir, 'favicon.png')) ? 'favicon.png' : 'icon-192.png'), join(out, 'favicon.png'));
 if (brand.logo) {
   if (!existsSync(join(brandDir, brand.logo))) { console.error(`logo ${brand.logo} is missing`); process.exit(1); }
   cpSync(join(brandDir, brand.logo), join(out, brand.logo));
