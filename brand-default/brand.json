@@ -1,0 +1,12 @@
+{
+  "name": "Your Company Warehouse",
+  "shortName": "Warehouse",
+  "company": "Your Company",
+  "description": "Stock, Take outs and Equipment check-out for the warehouse.",
+  "themeColor": "#2563eb",
+  "backgroundColor": "#ffffff",
+  "storagePrefix": "warehouse",
+  "logo": null,
+  "supabaseUrl": "",
+  "supabaseKey": ""
+}

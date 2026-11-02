@@ -1,0 +1,6 @@
+# Brand files are pulled in at build time from the private brand repo; never commit them here.
+brand/
+.brand-repo/
+dist/
+node_modules/
+test-results/

@@ -1,0 +1,5 @@
+/* Placeholder brand colours (blue), light then dark. A real brand folder replaces this file. */
+:root { --brand-50: #eff4ff; --brand-100: #dbe6fe; --brand-500: #2563eb; --brand-600: #1d4ed8; --brand-700: #1e3a8a; --on-brand: #ffffff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --brand-50: #172036; --brand-100: #1e2b4a; --brand-500: #4f83f1; --brand-600: #6b97f4; --brand-700: #a8c2fa; --on-brand: #0b1220; } }
+:root[data-theme="dark"] { --brand-50: #172036; --brand-100: #1e2b4a; --brand-500: #4f83f1; --brand-600: #6b97f4; --brand-700: #a8c2fa; --on-brand: #0b1220; }
