@@ -95,7 +95,22 @@ function loadBrand_(p) {
     }
     brand.logo = data || '';
   }
+  if (brand.font_url) brand.font = fetchData_(brand.font_url, 'font/woff2');
   return brand;
+}
+
+// Fetch a file once and keep it for 6 hours as a data: address the PDF can use.
+function fetchData_(url, type) {
+  const cache = CacheService.getScriptCache(); const key = 'data:' + url;
+  let data = cache.get(key);
+  if (data) return data;
+  try {
+    const r = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) return '';
+    data = 'data:' + type + ';base64,' + Utilities.base64Encode(r.getBlob().getBytes());
+    if (data.length < 95000) cache.put(key, data, 21600);
+    return data;
+  } catch (e) { return ''; }
 }
 
 function props_() {
@@ -123,90 +138,95 @@ function esc_(v) {
 }
 function qty_(v) { const n = Number(v); return Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000); }
 
+// Condensed layout using the company design kit: kit greys, the brand green and font (falls back to Arial).
 function buildHtml(d, brand) {
   brand = brand || {};
   const accent = brand.accent || '#2563EB', ink = brand.accent_ink || '#1E3A8A', tint = brand.tint || '#EFF4FF';
-  const INK = '#1E1E1E', MUT = '#5F6368', LINE = '#D9DCDF';
+  const INK = '#1E1E1E', INK2 = '#3D3D3D', MUT = '#8C9090', LINE = '#E0E0E0', ZEBRA = '#FAFAFA';
+  const FONT = (brand.font ? '"Brand",' : '') + 'Arial,Helvetica,sans-serif';
   const corr = d.corrections || [];
   const latest = corr[0];
   const job = d.job || {};
   const addr = job.address && job.address.lines && job.address.lines.length ? job.address : null;
   const sum = rows => rows.reduce((a, r) => a + Number(r.qty || 0), 0);
+  const cell = 'font-size:8.5pt;padding:3pt 6pt;border-bottom:.5pt solid ' + LINE + ';vertical-align:top;';
+  const th = 'font-size:6.5pt;font-weight:bold;letter-spacing:.06em;text-transform:uppercase;color:' + MUT + ';text-align:left;padding:3pt 6pt;border-bottom:1pt solid ' + INK + ';';
+  const lbl = 'font-size:6.5pt;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' + MUT + ';';
 
-  const css = 'body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:' + INK + ';margin:0;line-height:1.35}' +
-    'table{border-collapse:collapse;width:100%}td,th{vertical-align:top;font-size:10pt}' +
-    '.lbl{font-size:7.5pt;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' + MUT + '}' +
-    '.mono{font-family:"Courier New",monospace;font-size:9pt}' +
-    '.items th{font-size:7.5pt;letter-spacing:.06em;text-transform:uppercase;color:' + MUT + ';text-align:left;padding:6pt 8pt;border-bottom:1.5pt solid ' + INK + '}' +
-    '.items td{padding:6pt 8pt;border-bottom:.75pt solid ' + LINE + ';font-size:10pt}' +
-    '.items td b{font-size:10pt}' +
-    '.items tr.alt td{background:#F7F8F8}' +
-    '.items .q{text-align:right;font-weight:bold;font-size:11pt;white-space:nowrap}' +
-    '.items .n{color:#3D3D3D;font-size:9pt}' +
-    '.items .tot td{border-bottom:0;border-top:1.5pt solid ' + INK + ';font-weight:bold;padding-top:7pt}' +
-    'h2{font-size:11pt;margin:18pt 0 6pt}h2 span{font-weight:normal;color:' + MUT + ';font-size:9.5pt}';
+  const css = (brand.font ? '@font-face{font-family:"Brand";src:url(' + brand.font + ') format("woff2");font-weight:200 800}' : '') +
+    'body{font-family:' + FONT + ';font-size:8.5pt;color:' + INK + ';margin:0;line-height:1.3}' +
+    'table{border-collapse:collapse;width:100%}td,th{font-family:' + FONT + ';font-size:8.5pt;vertical-align:top}' +
+    '.mono{font-family:"Courier New",monospace;font-size:8pt;color:' + INK2 + '}';
 
   function itemsTable(rows) {
-    if (!rows.length) return '<p style="color:' + MUT + '">No items for this Job code.</p>';
-    return '<table class="items"><tr><th style="width:22pt">#</th><th style="width:64pt">Item no.</th><th>Item</th>' +
-      '<th style="text-align:right;width:52pt">Qty</th><th style="width:150pt">Note</th></tr>' +
-      rows.map((r, i) => '<tr class="' + (i % 2 ? 'alt' : '') + '"><td style="color:' + MUT + '">' + (i + 1) + '</td><td class="mono">' + esc_(r.number) +
-        '</td><td><b>' + esc_(r.name) + '</b></td><td class="q">' + qty_(r.qty) + '</td><td class="n">' + esc_(r.note) + '</td></tr>').join('') +
-      '<tr class="tot"><td></td><td colspan="2">' + rows.length + (rows.length === 1 ? ' line' : ' lines') + '</td><td class="q">' + qty_(sum(rows)) + '</td><td></td></tr></table>';
+    if (!rows.length) return '<div style="font-size:8.5pt;color:' + MUT + ';padding:2pt 0">No items for this Job code.</div>';
+    return '<table><tr><th style="' + th + 'width:14pt">#</th><th style="' + th + 'width:52pt">Item no.</th><th style="' + th + '">Item</th>' +
+      '<th style="' + th + 'text-align:right;width:34pt">Qty</th><th style="' + th + 'width:150pt">Note</th></tr>' +
+      rows.map((r, i) => '<tr style="background:' + (i % 2 ? ZEBRA : '#FFFFFF') + '"><td style="' + cell + 'color:' + MUT + '">' + (i + 1) + '</td>' +
+        '<td style="' + cell + '"><span class="mono">' + esc_(r.number) + '</span></td><td style="' + cell + 'font-weight:bold">' + esc_(r.name) + '</td>' +
+        '<td style="' + cell + 'text-align:right;font-weight:bold;font-size:9pt">' + qty_(r.qty) + '</td><td style="' + cell + 'color:' + INK2 + '">' + esc_(r.note) + '</td></tr>').join('') +
+      '<tr><td style="font-size:8pt;padding:3pt 6pt"></td><td colspan="2" style="font-size:8pt;padding:3pt 6pt;font-weight:bold;color:' + INK2 + '">' + rows.length + (rows.length === 1 ? ' line' : ' lines') + '</td>' +
+      '<td style="font-size:9pt;padding:3pt 6pt;text-align:right;font-weight:bold">' + qty_(sum(rows)) + '</td><td></td></tr></table>';
   }
   function changesTable(c) {
-    if (!c.changes.length) return '<p style="color:' + MUT + '">No quantity changes for this Job code.</p>';
-    return '<table class="items"><tr><th style="width:64pt">Item no.</th><th>Item</th><th style="text-align:right;width:52pt">Before</th>' +
-      '<th style="text-align:right;width:52pt">After</th><th style="text-align:right;width:60pt">Change</th></tr>' +
+    if (!c.changes.length) return '<div style="font-size:8.5pt;color:' + MUT + '">No quantity changes for this Job code.</div>';
+    return '<table><tr><th style="' + th + 'width:52pt">Item no.</th><th style="' + th + '">Item</th><th style="' + th + 'text-align:right;width:40pt">Before</th>' +
+      '<th style="' + th + 'text-align:right;width:40pt">After</th><th style="' + th + 'text-align:right;width:44pt">Change</th></tr>' +
       c.changes.map(x => {
         const diff = Number(x.after) - Number(x.before);
-        return '<tr><td class="mono">' + esc_(x.number) + '</td><td><b>' + esc_(x.name) + '</b>' + (x.note ? '<div class="n">' + esc_(x.note) + '</div>' : '') +
-          '</td><td class="q" style="font-weight:normal;color:' + MUT + '">' + qty_(x.before) + '</td><td class="q">' + qty_(x.after) +
-          '</td><td class="q" style="color:' + (diff > 0 ? ink : '#A33333') + '">' + (diff > 0 ? '+' : diff < 0 ? '&minus;' : '') + qty_(Math.abs(diff)) + '</td></tr>';
+        return '<tr><td style="' + cell + '"><span class="mono">' + esc_(x.number) + '</span></td><td style="' + cell + '"><b>' + esc_(x.name) + '</b>' +
+          (x.note ? ' <span style="color:' + MUT + '">· ' + esc_(x.note) + '</span>' : '') + '</td>' +
+          '<td style="' + cell + 'text-align:right;color:' + MUT + '">' + qty_(x.before) + '</td><td style="' + cell + 'text-align:right;font-weight:bold">' + qty_(x.after) + '</td>' +
+          '<td style="' + cell + 'text-align:right;font-weight:bold;color:' + (diff > 0 ? ink : '#A33333') + '">' + (diff > 0 ? '+' : diff < 0 ? '&minus;' : '') + qty_(Math.abs(diff)) + '</td></tr>';
       }).join('') + '</table>';
   }
+  const h2 = (title, sub) => '<div style="margin:10pt 0 3pt;font-size:9pt;font-weight:bold;color:' + INK + '">' + title +
+    (sub ? ' <span style="font-weight:normal;color:' + MUT + ';font-size:8pt">' + sub + '</span>' : '') + '</div>';
 
-  const status = d.cancelled ? ['CANCELLED', '#FDEAEA', '#A33333'] : corr.length ? ['CORRECTED · VERSION ' + d.version, '#FDF3E0', '#7A4F00'] : ['TAKE OUT · VERSION ' + d.version, tint, ink];
+  const status = d.cancelled ? ['CANCELLED', '#FDEAEA', '#A33333'] : corr.length ? ['CORRECTED · ' + d.version, '#FDF3E0', '#7A4F00'] : ['TAKE OUT · ' + d.version, tint, ink];
   const meta = [['Cart', d.cart.id], ['Date', d.cart.at], ['Entered by', d.cart.entered_by]]
     .concat(d.cart.on_behalf_of ? [['For', d.cart.on_behalf_of]] : [])
-    .concat([['Branch', d.branch_code || d.branch], ['Job code', String(job.full_name || job.name || '').replace(/\s*=>\s*/g, ' › ')]]);
+    .concat([['Branch', d.branch_code || d.branch]]);
 
   let banner = '';
-  if (d.cancelled) banner = '<div style="margin-top:16pt;padding:9pt 12pt;border:1.5pt solid #C94040;background:#FDEAEA;color:#7A1F1F;font-weight:bold">Cancelled' +
-    (latest ? ' on ' + esc_(latest.at) + ' by ' + esc_(latest.by) : '') + '. Nothing on this document should be billed. This replaces every earlier version of D' + d.doc_id + '.</div>';
-  else if (latest) banner = '<div style="margin-top:16pt;padding:9pt 12pt;border:1.5pt solid #E8A020;background:#FDF3E0;color:#5C3B00;font-weight:bold">Corrected ' +
-    corr.length + (corr.length === 1 ? ' time' : ' times') + ', last on ' + esc_(latest.at) + ' by ' + esc_(latest.by) +
-    '. Bill the items below. This replaces every earlier version of D' + d.doc_id + '.</div>';
+  if (d.cancelled) banner = '<div style="margin-top:8pt;padding:4pt 8pt;border-left:3pt solid #C94040;background:#FDEAEA;color:#7A1F1F;font-size:8.5pt;font-weight:bold">Cancelled' +
+    (latest ? ' ' + esc_(latest.at) + ' by ' + esc_(latest.by) : '') + '. Nothing on this document should be billed. Replaces every earlier version of D' + d.doc_id + '.</div>';
+  else if (latest) banner = '<div style="margin-top:8pt;padding:4pt 8pt;border-left:3pt solid #E8A020;background:#FDF3E0;color:#5C3B00;font-size:8.5pt;font-weight:bold">Corrected ' +
+    corr.length + (corr.length === 1 ? ' time' : ' times') + ', last ' + esc_(latest.at) + ' by ' + esc_(latest.by) +
+    '. Bill the items below. Replaces every earlier version of D' + d.doc_id + '.</div>';
 
-  let body = '<h2>' + (corr.length ? 'Items to bill (current)' : 'Items taken out') + '</h2>' + itemsTable(d.cancelled ? [] : d.current);
+  let body = h2(corr.length ? 'Items to bill (current)' : 'Items taken out') + itemsTable(d.cancelled ? [] : d.current);
   const noteNow = d.current_note;
-  if (noteNow) body += '<p style="margin-top:10pt;font-size:9.5pt"><span class="lbl">Cart note</span>&nbsp; ' + esc_(noteNow) + '</p>';
+  if (noteNow) body += '<div style="margin-top:4pt;font-size:8.5pt"><span style="' + lbl + '">Cart note</span>&nbsp; ' + esc_(noteNow) + '</div>';
   corr.forEach(c => {
-    body += '<h2>' + (c.cancelled ? 'Cancellation' : 'Correction ' + c.seq) + ' <span>· ' + esc_(c.at) + ' · ' + esc_(c.by) +
-      (c.correction_note ? ' · “' + esc_(c.correction_note) + '”' : '') + '</span></h2>';
-    if ((c.note_before || '') !== (c.note_after || '')) body += '<p style="font-size:9.5pt;color:' + MUT + ';margin:0 0 6pt">Cart note changed from “' +
-      esc_(c.note_before) + '” to “' + esc_(c.note_after) + '”</p>';
+    body += h2(c.cancelled ? 'Cancellation' : 'Correction ' + c.seq, '· ' + esc_(c.at) + ' · ' + esc_(c.by) + (c.correction_note ? ' · “' + esc_(c.correction_note) + '”' : ''));
+    if ((c.note_before || '') !== (c.note_after || '')) body += '<div style="font-size:8pt;color:' + MUT + ';margin:0 0 3pt">Cart note changed from “' +
+      esc_(c.note_before) + '” to “' + esc_(c.note_after) + '”</div>';
     body += changesTable(c);
   });
-  if (corr.length) body += '<h2>Original Cart ' + d.cart.id + ' <span>· ' + esc_(d.cart.at) + ' · ' + esc_(d.cart.entered_by) + '</span></h2>' +
-    itemsTable(d.original) + (d.cart.note && d.cart.note !== noteNow ? '<p style="margin-top:8pt;font-size:9.5pt"><span class="lbl">Original Cart note</span>&nbsp; ' + esc_(d.cart.note) + '</p>' : '');
+  if (corr.length) body += h2('Original Cart ' + d.cart.id, '· ' + esc_(d.cart.at) + ' · ' + esc_(d.cart.entered_by)) + itemsTable(d.original) +
+    (d.cart.note && d.cart.note !== noteNow ? '<div style="margin-top:4pt;font-size:8.5pt"><span style="' + lbl + '">Original Cart note</span>&nbsp; ' + esc_(d.cart.note) + '</div>' : '');
 
-  const logo = brand.logo ? '<img src="' + brand.logo + '" style="height:46pt">' : '<div style="font-size:16pt;font-weight:bold">' + esc_(brand.company || '') + '</div>';
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body><div style="padding:36pt 40pt">' +
-    '<table><tr><td style="width:55%">' + logo + '</td><td style="text-align:right"><div class="lbl">Material usage</div>' +
-    '<div style="font-size:26pt;font-weight:bold;line-height:1.1">D' + d.doc_id + '</div>' +
-    '<div style="display:inline-block;margin-top:4pt;padding:2pt 7pt;font-size:8pt;font-weight:bold;background:' + status[1] + ';color:' + status[2] + '">' + status[0] + '</div></td></tr></table>' +
-    '<div style="height:4pt;background:' + accent + ';margin:14pt 0 16pt"></div>' +
-    '<table><tr><td style="width:58%;padding-right:16pt"><div class="lbl">Job</div>' +
-    '<div style="font-size:18pt;font-weight:bold;margin:2pt 0 1pt">' + esc_(job.name || ('Job code ' + job.id)) + '</div>' +
-    (job.customer ? '<div style="color:' + MUT + ';font-size:10pt">' + esc_(String(job.customer).replace(/\s*=>\s*/g, ' › ')) + '</div>' : '') +
-    '<div style="margin-top:8pt;padding:8pt 10pt;background:' + tint + '"><div class="lbl" style="color:' + ink + '">' +
-    (addr ? (addr.source === 'site' ? 'Job site' : 'Billing address') : 'Job site') + '</div>' +
-    (addr ? addr.lines.map(l => '<div style="font-size:11pt">' + esc_(l) + '</div>').join('') : '<div style="font-size:10pt;color:' + MUT + '">No address on file in QuickBooks</div>') +
-    '</div></td><td><table style="font-size:9.5pt">' +
-    meta.map(m => '<tr><td style="color:' + MUT + ';padding:2pt 10pt 2pt 0;white-space:nowrap;font-size:9.5pt">' + m[0] + '</td><td style="font-weight:bold;padding:2pt 0;font-size:9.5pt">' + esc_(m[1]) + '</td></tr>').join('') +
-    '</table></td></tr></table>' + banner + body +
-    '<table style="margin-top:28pt;border-top:.75pt solid ' + LINE + ';color:' + MUT + '"><tr><td style="padding-top:6pt;font-size:7.5pt;color:' + MUT + '">' +
-    esc_(brand.company ? brand.company + ' · ' : '') + 'Take outs only · Made ' + esc_(d.generated_at) + ' (' + esc_(d.timezone) + ')</td>' +
-    '<td style="padding-top:6pt;text-align:right;font-size:7.5pt;color:' + MUT + '">' + esc_(d.file_name) + '.pdf</td></tr></table></div></body></html>';
+  const logo = brand.logo ? '<img src="' + brand.logo + '" style="height:32pt">' : '<div style="font-size:12pt;font-weight:bold">' + esc_(brand.company || '') + '</div>';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body><div style="padding:22pt 26pt">' +
+    // Header: logo, document number and status on one line
+    '<table><tr><td style="vertical-align:middle">' + logo + '</td>' +
+    '<td style="text-align:right;vertical-align:middle"><span style="' + lbl + '">Material usage</span>&nbsp;&nbsp;' +
+    '<span style="font-size:14pt;font-weight:bold;vertical-align:middle">D' + d.doc_id + '</span>&nbsp;&nbsp;' +
+    '<span style="padding:1.5pt 5pt;font-size:6.5pt;font-weight:bold;letter-spacing:.04em;background:' + status[1] + ';color:' + status[2] + ';vertical-align:middle">' + status[0] + '</span></td></tr></table>' +
+    '<div style="height:2pt;background:' + accent + ';margin:6pt 0 8pt"></div>' +
+    // Job, address and Cart details side by side
+    '<table><tr>' +
+    '<td style="width:44%;padding-right:10pt"><div style="' + lbl + '">Job</div>' +
+    '<div style="font-size:12pt;font-weight:bold;line-height:1.2">' + esc_(job.name || ('Job code ' + job.id)) + '</div>' +
+    (job.customer ? '<div style="font-size:8.5pt;color:' + INK2 + '">' + esc_(String(job.customer).replace(/\s*=>\s*/g, ' › ')) + '</div>' : '') +
+    '</td>' +
+    '<td style="width:28%;padding:4pt 8pt;background:' + tint + '"><div style="' + lbl + 'color:' + ink + '">' + (addr && addr.source !== 'site' ? 'Billing address' : 'Job site') + '</div>' +
+    (addr ? addr.lines.map(l => '<div style="font-size:8.5pt">' + esc_(l) + '</div>').join('') : '<div style="font-size:8pt;color:' + MUT + '">No address in QuickBooks</div>') + '</td>' +
+    '<td style="padding-left:10pt"><table>' + meta.map(m => '<tr><td style="font-size:7.5pt;color:' + MUT + ';padding:0 6pt 1pt 0;white-space:nowrap">' + m[0] + '</td>' +
+      '<td style="font-size:8pt;font-weight:bold;padding:0 0 1pt">' + esc_(m[1]) + '</td></tr>').join('') + '</table></td>' +
+    '</tr></table>' + banner + body +
+    '<table style="margin-top:14pt;border-top:.5pt solid ' + LINE + '"><tr><td style="padding-top:3pt;font-size:6.5pt;color:' + MUT + '">' +
+    esc_(brand.company ? brand.company + ' · ' : '') + 'Take outs only · Made ' + esc_(d.generated_at) + '</td>' +
+    '<td style="padding-top:3pt;text-align:right;font-size:6.5pt;color:' + MUT + '">' + esc_(d.file_name) + '.pdf</td></tr></table></div></body></html>';
 }
