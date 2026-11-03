@@ -137,10 +137,12 @@ function myRecentCarts(limit = 4) {
   const me = S.user.id;
   return (S.snap.carts || []).filter(c => c.entered_by === me || c.on_behalf_of === me).slice(0, limit);
 }
-function cartJobs(c) { return [...new Set(c.lines.map(l => jobLabel(l.jobcode_id)))].join('; ') || (c.equipment.length ? 'Equipment' : '—'); }
+// A cancelled Cart has no current lines; lists show what it held when it was submitted.
+const shownLines = c => c.cancelled && c.original ? c.original : c.lines;
+function cartJobs(c) { return [...new Set(shownLines(c).map(l => jobLabel(l.jobcode_id)))].join('; ') || (c.equipment.length ? 'Equipment' : '—'); }
 function recentRows(list) {
   return list.map(c => `<button class="row-i" data-act="openCart" data-id="${c.id}"><span class="grow"><span class="t clip">${esc(cartJobs(c))}</span>
-    <span class="s">Cart ${c.id} · ${plural(c.lines.length + c.equipment.length, 'item')}${c.corrections ? ' · corrected' : ''}${c.cancelled ? ' · cancelled' : ''}</span></span>
+    <span class="s">Cart ${c.id} · ${plural(shownLines(c).length + c.equipment.length, 'item')}${c.corrections ? ' · corrected' : ''}${c.cancelled ? ' · cancelled' : ''}</span></span>
     <span class="s nowrap">${fmtDT(c.received_at)}</span></button>`).join('');
 }
 SCREENS.home = () => {
@@ -159,7 +161,7 @@ SCREENS.home = () => {
       <div class="stack-l">
         <button class="hero" data-act="go" data-to="cart?mode=take"><span class="hero-ic">${icon('swap', 28)}</span>
           <span class="grow"><b>${S.cart && S.cart.lines.length ? (S.cart.correction ? 'Finish your Correction' : 'Finish your Cart') : 'Take out or return'}</b>
-          <span>${S.cart && S.cart.lines.length ? `${plural(S.cart.lines.length, 'item')} waiting to be saved` : 'Parts for a Job code'}</span></span>${icon('chevron', 22)}</button>
+          <span>${S.cart && S.cart.lines.length ? `${plural(S.cart.lines.length, 'item')} not submitted yet` : 'Parts for a Job code'}</span></span>${icon('chevron', 22)}</button>
         <div class="actions">
           ${card('cart?mode=equipment', 'tool', 'Equipment', mineOut ? `${plural(mineOut, 'item')} checked out to you` : 'Check out or check in')}
           ${card('entries', 'list', 'My entries', 'Fix the last 2 weeks')}
@@ -196,7 +198,7 @@ function deskHome({ card, mineOut, openPicks, myCounts, alerts }) {
         <div class="dh-start">
           <button class="hero" data-act="go" data-to="cart?mode=take"><span class="hero-ic">${icon('swap', 28)}</span>
             <span class="grow"><b>${S.cart && S.cart.lines.length ? (S.cart.correction ? 'Finish your Correction' : 'Finish your Cart') : 'Take out or return'}</b>
-            <span>${S.cart && S.cart.lines.length ? `${plural(S.cart.lines.length, 'item')} waiting to be saved` : 'Parts for a Job code'}</span></span>${icon('chevron', 22)}</button>
+            <span>${S.cart && S.cart.lines.length ? `${plural(S.cart.lines.length, 'item')} not submitted yet` : 'Parts for a Job code'}</span></span>${icon('chevron', 22)}</button>
           <div class="actions">
             ${card('cart?mode=equipment', 'tool', 'Equipment', mineOut ? `${plural(mineOut, 'item')} checked out to you` : 'Check out or check in')}
             ${card('receive', 'plus', 'Receive items', 'Deliveries and parts back')}
@@ -248,10 +250,10 @@ function entriesWidget() {
   const body = isDesk()
     ? `<div class="card flat table-wrap"><table class="t"><thead><tr><th>When</th>${scope === 'all' ? '<th>Who</th>' : ''}<th>What</th><th>Job code</th><th class="right">Lines</th><th></th></tr></thead>
       <tbody>${list.map(c => `<tr class="click" data-act="openCart" data-id="${c.id}"><td class="muted nowrap">${fmtDT(c.received_at)}</td>${scope === 'all' ? `<td class="nowrap">${esc(who(c))}</td>` : ''}
-        <td>${kinds(c)}</td><td>${esc(cartJobs(c))}</td><td class="n">${c.lines.length + c.equipment.length}</td><td>${status(c)}</td></tr>`).join('')
+        <td>${kinds(c)}</td><td>${esc(cartJobs(c))}</td><td class="n">${shownLines(c).length + c.equipment.length}</td><td>${status(c)}</td></tr>`).join('')
         || `<tr><td colspan="6" class="muted">No Carts in the last 2 weeks.</td></tr>`}</tbody></table></div>`
     : `<div class="card flat list">${pendRows}${list.map(c => `<button class="row-i" data-act="openCart" data-id="${c.id}"><span class="grow"><span class="t clip">${esc(cartJobs(c))}</span>
-        <span class="s">${scope === 'all' ? esc(who(c)) + ' · ' : ''}Cart ${c.id} · ${plural(c.lines.length + c.equipment.length, 'item')}</span></span>
+        <span class="s">${scope === 'all' ? esc(who(c)) + ' · ' : ''}Cart ${c.id} · ${plural(shownLines(c).length + c.equipment.length, 'item')}</span></span>
         <span class="ent-r">${status(c)}<span class="s nowrap">${fmtDT(c.received_at)}</span></span></button>`).join('')}
         ${!list.length && !pend.length ? `<div class="empty">${scope === 'all' ? 'No Carts in the last 2 weeks.' : 'Nothing yet. Tap Take out or return to start.'}</div>` : ''}</div>`;
   return `<section class="sec entries-widget"><div class="sec-row"><h2 class="sec-h">${mgr ? 'Latest entries' : 'Your recent carts'}</h2>
@@ -311,7 +313,7 @@ SCREENS.cart = () => {
   const title = c.correction ? `Correcting Cart ${c.correction.cart_id}` : 'Cart';
   if (!wide) {
     return `<div class="cart-phone">
-      <div class="head">${back('Home', 'home')}<h1>${title}</h1>${forSel}</div>
+      <div class="cp-head"><h1>${title}</h1>${isManager() && !c.correction ? forSel : ''}</div>
       ${seg}${jobCard()}${search}
       ${region('finder', finderHtml)}
       ${region('cartLines', cartLinesHtml)}
@@ -328,9 +330,9 @@ function jobCard() {
     <b>${c.jobAll ? esc(jobLabel(c.jobAll)) : 'Choose the Job code'}</b>${c.jobAll && jobAddr(c.jobAll) ? `<span class="addr">${esc(jobAddr(c.jobAll))}</span>` : ''}</span><span class="act">${c.jobAll ? 'Change' : 'Choose'}</span></button>`;
 }
 function saveBar() {
-  const n = S.cart.lines.length;
-  return `<div class="savebar">${n ? `<button class="btn primary big" data-act="review">Check and save · ${plural(n, 'item')}</button>`
-    : `<button class="btn big" disabled>Add items to save</button>`}</div>`;
+  const c = S.cart; const n = c.lines.length;
+  const discard = !isWide() && (n || c.correction) ? `<button class="btn big discard-s" data-act="discardCart" aria-label="Discard this ${c.correction ? 'Correction' : 'Cart'}">${icon('x', 18)}<span>Discard</span></button>` : '';
+  return `<div class="savebar ${discard ? 'with-discard' : ''}">${discard}<button class="btn big submit" data-act="review" ${n ? '' : 'disabled'}>${n ? `${isWide() ? 'Review and submit' : 'Submit'} · ${plural(n, 'item')}` : 'Add items to submit'}</button></div>`;
 }
 CH.obo = v => { S.cart.obo = v ? Number(v) : null; refresh('finder'); };
 ACT.mode = d => { S.cart.mode = d.m; S.cart.q = ''; render(); };
@@ -422,6 +424,8 @@ function cartLinesHtml() {
   if (!isWide() && c.q) return '';
   if (!c.lines.length) return `<div class="empty card flat">${isWide() ? 'Tap + on an item to add it.' : 'Search or scan to add items.'}</div>
     ${c.correction ? `<button class="btn danger" data-act="cancelCart" data-id="${c.correction.cart_id}">Cancel the whole Cart instead</button>` : ''}`;
+  if (!isWide()) return `<div class="cp-lines-h"><span>${plural(c.lines.length, 'item')} in this ${c.correction ? 'Correction' : 'Cart'}</span></div>
+    <div class="cp-lines">${c.lines.map(lineRowPhone).join('')}</div>`;
   return `<div class="lines">${c.lines.map(lineHtml).join('')}</div>
     <button class="btn danger discard" data-act="discardCart">${icon('x', 18)}${c.correction ? 'Discard this Correction' : 'Discard this Cart'}</button>`;
 }
@@ -440,7 +444,7 @@ function lineHtml(l) {
     <div class="lc-top"><div class="grow">${l.kind !== 'take' ? `<span class="tag ${l.kind}">${MODES[l.kind]}</span> ` : ''}<span class="t">${esc(it.name)}</span>
       <span class="s"><span class="num">${esc(it.number)}</span>${locPath(it.location_id) ? ' · ' + esc(locPath(it.location_id)) : ''}</span></div>
       <button class="icon-x" data-act="rmLine" data-lid="${l.lid}" aria-label="Remove ${esc(it.name)}">${icon('x', 18)}</button></div>
-    ${short ? `<span class="warn-t">Only ${fmtQty(it.qty)} on the shelf. It will still be saved.</span>` : ''}
+    ${short ? `<span class="warn-t">Only ${fmtQty(it.qty)} on the shelf. It will still be submitted.</span>` : ''}
     ${l.kind === 'checkin' ? `<span class="s">Back from ${esc(jobLabel(l.jobcode_id))}</span>` : ''}
     ${otherJob || missingJob ? `<button class="chip ${missingJob ? 'bad' : ''}" data-act="pickJob" data-lid="${l.lid}">${missingJob ? 'Choose a Job code' : 'Job: ' + esc(jobLabel(l.jobcode_id))}</button>` : ''}
     ${l.noteOpen || l.note ? `<input class="note-in" type="text" placeholder="Note for this line" value="${esc(l.note)}" data-in="lineNote" data-lid="${l.lid}" aria-label="Line note">` : ''}
@@ -452,10 +456,44 @@ function lineHtml(l) {
       ${!l.noteOpen && !l.note ? `<button class="link" data-act="noteOpen" data-lid="${l.lid}">Add note</button>` : ''}</div>
   </article>`;
 }
+// Phone: one compact row per item. Name on the left, quantity on the right; note, Job code and remove are behind "More".
+function lineRowPhone(l) {
+  const c = S.cart; const it = item(l.item_id) || { name: '?', number: '' };
+  const fixed = l.kind === 'checkin' || (l.kind === 'checkout' && !it.counted);
+  const short = l.kind === 'take' && num(l.qty) > num(it.qty);
+  const otherJob = l.kind !== 'checkin' && l.jobcode_id && l.jobcode_id !== c.jobAll;
+  const missingJob = l.kind !== 'checkin' && !l.jobcode_id;
+  return `<article class="cp-line ${missingJob ? 'missing' : ''}">
+    <button class="cp-info" data-act="lineMenu" data-lid="${l.lid}" aria-label="Options for ${esc(it.name)}">
+      <span class="t">${l.kind !== 'take' ? `<span class="tag ${l.kind}">${MODES[l.kind]}</span> ` : ''}${esc(it.name)}</span>
+      <span class="s"><span class="num">${esc(it.number)}</span>${locPath(it.location_id) ? ' · ' + esc(locPath(it.location_id)) : ''}</span>
+      ${missingJob ? '<span class="cp-flag bad">Choose a Job code</span>' : otherJob ? `<span class="cp-flag">Job: ${esc(jobLabel(l.jobcode_id))}</span>` : ''}
+      ${l.kind === 'checkin' ? `<span class="s">Back from ${esc(jobLabel(l.jobcode_id))}</span>` : ''}
+      ${l.note ? `<span class="cp-note">“${esc(l.note)}”</span>` : ''}
+      ${short ? `<span class="warn-t">Only ${fmtQty(it.qty)} on the shelf</span>` : ''}
+      <span class="cp-more">${l.note ? 'Edit' : 'Note'}, job, remove</span></button>
+    ${fixed ? `<b class="qty-fixed">${fmtQty(l.qty)}</b>` : `<div class="stepper sm"><button data-act="qty" data-lid="${l.lid}" data-d="-1" aria-label="One less">−</button>
+      <input type="number" inputmode="decimal" min="0" step="any" value="${fmtQty(l.qty)}" data-in="qtyIn" data-lid="${l.lid}" aria-label="Quantity of ${esc(it.name)}">
+      <button data-act="qty" data-lid="${l.lid}" data-d="1" aria-label="One more">+</button></div>`}
+  </article>`;
+}
+ACT.lineMenu = d => openModal('lineMenu', { lid: d.lid });
+MODALS.lineMenu = () => {
+  const l = lineBy(S.modal.lid); if (!l) return modal('Item', 'Not in the Cart any more.');
+  const it = item(l.item_id) || {};
+  return modal(esc(it.name || 'Item'), `<div class="stack">
+    ${l.kind !== 'checkin' ? `<button class="row-i lm-job" data-act="pickJob" data-lid="${l.lid}"><span class="grow"><span class="s">Job code</span><span class="t">${l.jobcode_id ? esc(jobLabel(l.jobcode_id)) : 'Choose a Job code'}</span>
+      ${l.jobcode_id && jobAddr(l.jobcode_id) ? `<span class="s">${esc(jobAddr(l.jobcode_id))}</span>` : ''}</span><span class="act">Change</span></button>` : ''}
+    <label class="f">Note for this item<input type="text" value="${esc(l.note || '')}" data-in="lineNote" data-lid="${l.lid}" placeholder="e.g. Kitchen"></label>
+    <button class="btn danger" data-act="rmLineM" data-lid="${l.lid}">${icon('x', 18)} Remove from ${S.cart.correction ? 'the Correction' : 'the Cart'}</button></div>`,
+    `<span class="grow"></span><button class="btn primary" data-act="lineDone">Done</button>`, false, 'sheet');
+};
+ACT.lineDone = () => { closeModal(); refresh('cartLines'); };
+ACT.rmLineM = d => { closeModal(); ACT.rmLine(d); };
 const lineBy = lid => S.cart.lines.find(l => l.lid === lid);
 ACT.qty = d => { const l = lineBy(d.lid); l.qty = Math.max(0, num(l.qty) + num(d.d)); if (l.qty === 0) S.cart.lines = S.cart.lines.filter(x => x !== l); refresh('cartLines', 'savebar'); };
 IN.qtyIn = (v, d) => { const l = lineBy(d.lid); if (l) l.qty = num(v); };
-IN.lineNote = (v, d) => { const l = lineBy(d.lid); if (l) l.note = v; };
+IN.lineNote = (v, d) => { const l = lineBy(d.lid); if (l) l.note = v; if (S.modal && S.modal.kind === 'lineMenu') refresh('cartLines'); };
 ACT.noteOpen = d => { const l = lineBy(d.lid); l.noteOpen = true; refresh('cartLines'); const i = $(`[data-in=lineNote][data-lid="${d.lid}"]`); if (i) i.focus(); };
 ACT.rmLine = d => { S.cart.lines = S.cart.lines.filter(l => l.lid !== d.lid); if (!S.cart.lines.some(l => l.kind === 'checkout') && S.cart.mode === 'equipment') render(); else refresh('cartLines', 'finder', 'savebar'); };
 ACT.jobAll = () => openModal('job', { target: 'all' });
@@ -499,7 +537,7 @@ ACT.setJob = async d => {
   if (!m.onPick) { if (S.screen === 'cart') render(); }
 };
 
-// ------------------------------------------------------------------ check and save
+// ------------------------------------------------------------------ check and submit
 ACT.review = () => {
   const c = S.cart;
   c.lines = c.lines.filter(l => num(l.qty) > 0);
@@ -508,22 +546,22 @@ ACT.review = () => {
   _go('review', {});
 };
 SCREENS.review = () => {
-  const c = S.cart; if (!c) return pageHead('Check and save', '', 'home');
+  const c = S.cart; if (!c) return pageHead('Check and submit', '', 'home');
   const groups = new Map();
   for (const l of c.lines) { const k = l.jobcode_id || 0; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
   const short = c.lines.filter(l => l.kind === 'take' && num(l.qty) > num((item(l.item_id) || {}).qty));
   const verbs = [...new Set(c.lines.map(l => MODES[l.kind]))].join(', ');
-  return `<div class="review">${pageHead(c.correction ? `Check your Correction to Cart ${c.correction.cart_id}` : 'Check and save', '', 'cart', 'Cart')}
+  return `<div class="review">${pageHead(c.correction ? `Check your Correction to Cart ${c.correction.cart_id}` : 'Check and submit', '', 'cart', 'Cart')}
     <p class="lead">${esc(verbs)} by <b>${esc(S.user.name)}</b>${c.obo ? ` for <b>${esc(userName(c.obo))}</b>` : ''}. Each Job code gets its own billing document.</p>
     ${[...groups.entries()].map(([job, ls]) => `<section class="card flat"><h2 class="card-h">${job ? esc(jobLabel(job)) : 'Equipment coming back'}${job && jobAddr(job) ? `<span class="addr">${esc(jobAddr(job))}</span>` : ''}</h2>
       ${ls.map(l => { const it = item(l.item_id) || {}; return `<div class="rv-row"><span class="grow">${l.kind !== 'take' ? `<span class="tag ${l.kind}">${MODES[l.kind]}</span> ` : ''}<span class="t">${esc(it.name)}</span>
         <span class="s"><span class="num">${esc(it.number || '')}</span></span>${l.note ? `<span class="s note">${esc(l.note)}</span>` : ''}</span><b class="rv-q">${fmtQty(l.qty)}</b></div>`; }).join('')}</section>`).join('')}
-    ${short.length ? `<div class="msg warn">More than the app thinks is on the shelf: ${short.map(l => esc(item(l.item_id).name)).join(', ')}. It will be saved and Managers will be asked to recount.</div>` : ''}
+    ${short.length ? `<div class="msg warn">More than the app thinks is on the shelf: ${short.map(l => esc(item(l.item_id).name)).join(', ')}. It will still be submitted and Managers will be asked to recount.</div>` : ''}
     <label class="f">Note for the whole Cart (optional)<textarea data-in="cartNote" rows="2" placeholder="e.g. Rough-in, second floor">${esc(c.note)}</textarea>
       <span class="hint">Goes on every billing document from this Cart. For one job only, use a line note.</span></label>
     ${c.correction ? `<label class="f">Correction note (optional)<input type="text" data-in="corrNote" value="${esc(c.correctionNote || '')}" placeholder="e.g. Took 6, not 8">
       <span class="hint">The original Cart stays on record. Billing documents for the Job codes this changes are replaced with a corrected version.</span></label>` : ''}
-    <div class="savebar two"><button class="btn big" data-act="go" data-to="cart">Back</button><button class="btn primary big" data-act="saveCart">${c.correction ? 'Save Correction' : 'Save'}</button></div></div>`;
+    <div class="savebar two"><button class="btn big" data-act="go" data-to="cart">Back</button><button class="btn big submit" data-act="saveCart">${c.correction ? 'Submit Correction' : 'Submit Cart'}</button></div></div>`;
 };
 IN.cartNote = v => { S.cart.note = v; };
 IN.corrNote = v => { S.cart.correctionNote = v; };
@@ -535,7 +573,7 @@ ACT.saveCart = async () => {
   else await queue('cart', { lines, note: c.note, on_behalf_of: c.obo || undefined, pick_id: c.pick_id || undefined });
   for (const l of lines) if (l.jobcode_id) await rememberJob(l.jobcode_id);
   S.cart = null; S.modal = null; go('home');
-  toast(c.correction ? 'Correction saved' : 'Saved', 2500);
+  toast(c.correction ? 'Correction submitted' : 'Cart submitted', 2500);
 };
 
 // ------------------------------------------------------------------ scanning
@@ -586,11 +624,12 @@ MODALS.cartDetail = () => {
   const c = (S.snap.carts || []).find(x => x.id === S.modal.id); if (!c) return modal('Cart', 'Not found');
   const pending = S.outbox.some(o => o.op === 'correction' && o.data.cart_id === c.id);
   const can = !c.cancelled && !pending && (c.entered_by === S.user.id || c.on_behalf_of === S.user.id || isManager());
-  const rows = [...c.lines.map(l => ({ ...l })), ...c.equipment];
-  return modal(`Cart ${c.id}`, `<dl class="kv"><dt>Saved</dt><dd>${fmtDT(c.received_at)}</dd><dt>Entered by</dt><dd>${esc(userName(c.entered_by))}</dd>
+  const rows = [...shownLines(c).map(l => ({ ...l })), ...c.equipment];
+  return modal(`Cart ${c.id}`, `<dl class="kv"><dt>Submitted</dt><dd>${fmtDT(c.received_at)}</dd><dt>Entered by</dt><dd>${esc(userName(c.entered_by))}</dd>
       ${c.on_behalf_of ? `<dt>For</dt><dd>${esc(userName(c.on_behalf_of))}</dd>` : ''}${c.note ? `<dt>Note</dt><dd>${esc(c.note)}</dd>` : ''}</dl>
-    ${c.cancelled ? '<div class="msg bad">This Cart was cancelled.</div>' : ''}${pending ? '<div class="msg warn">A Correction is waiting to send.</div>' : ''}
-    <div class="card flat">${rows.map(l => { const it = item(l.item_id) || {}; return `<div class="rv-row"><span class="grow"><span class="tag ${l.kind}">${MODES[l.kind]}</span> <span class="t">${esc(it.name)}</span>
+    ${c.cancelled ? `<div class="msg bad">This Cart was cancelled. Everything below was undone and put back in stock, and its billing documents are marked cancelled.</div>` : ''}
+    ${c.cancelled ? '<h3 class="sec-h">What was cancelled</h3>' : ''}${pending ? '<div class="msg warn">A Correction is waiting to send.</div>' : ''}
+    <div class="card flat ${c.cancelled ? 'cancelled-lines' : ''}">${rows.map(l => { const it = item(l.item_id) || {}; return `<div class="rv-row"><span class="grow"><span class="tag ${l.kind}">${MODES[l.kind]}</span> <span class="t">${esc(it.name)}</span>
       <span class="s">${esc(jobLabel(l.jobcode_id))}${l.note ? ' · ' + esc(l.note) : ''}</span></span><b class="rv-q">${fmtQty(l.qty)}</b></div>`; }).join('') || '<div class="empty">No lines</div>'}</div>
     ${c.equipment.length ? '<p class="muted small">Equipment lines cannot be corrected here; check the item in or out again instead.</p>' : ''}`,
     can ? `<button class="btn danger" data-act="cancelCart" data-id="${c.id}">Cancel Cart</button><span class="grow"></span>
@@ -604,10 +643,12 @@ ACT.correctCart = d => {
   S.modal = null; _go('cart', {});
 };
 ACT.cancelCart = async d => {
-  if (!confirm(`Cancel Cart ${d.id}? Its Take outs and Returns are undone and its billing documents are marked cancelled.`)) return;
+  const c = (S.snap.carts || []).find(x => x.id === Number(d.id));
+  const what = c ? c.lines.map(l => `• ${fmtQty(l.qty)} × ${(item(l.item_id) || {}).name || '?'} (${MODES[l.kind]}, ${jobLabel(l.jobcode_id)})`).join('\n') : '';
+  if (!confirm(`Cancel Cart ${d.id}? These are undone and put back in stock, and the billing documents are marked cancelled:\n\n${what}`)) return;
   const note = prompt('Correction note (optional)', '') || '';
   await queue('correction', { cart_id: Number(d.id), cancel: true, lines: [], correction_note: note });
-  S.cart = null; closeModal(); go('home'); toast('Cart cancelled');
+  S.cart = null; S.modal = null; go('entries'); openModal('cartDetail', { id: Number(d.id) }); toast('Cart cancelled');
 };
 
 // ------------------------------------------------------------------ catalogue
@@ -769,7 +810,7 @@ MODALS.item = () => {
   const i = item(S.modal.id); if (!i) return modal('Item', 'Not found');
   return modal('Item', itemDetail(i), itemActions(i));
 };
-function fieldShow(f, v) { if (f.ftype === 'bool') return v ? 'Yes' : 'No'; if (f.ftype === 'date') return fmtD(v + 'T12:00:00Z'); return String(v); }
+function fieldShow(f, v) { if (f.ftype === 'bool') return v ? 'Yes' : 'No'; if (f.ftype === 'date') return fmtYmd(v); return String(v); }
 ACT.printOne = d => printLabels([item(d.id)]);
 ACT.history = d => { closeModal(); go('reports', { kind: 'flow', item: d.id }); };
 ACT.adjustOne = d => { closeModal(); S.le = S.le || {}; S.le.adjust = { lines: [], note: '' }; go('adjust'); addEdLine('adjust', d.id); };
@@ -849,7 +890,7 @@ SCREENS.pick = () => {
       <input type="checkbox" data-ch="pickTick" data-n="${n}" ${l.picked ? 'checked' : ''} class="big-check">
       <span class="grow"><span class="t">${esc(it.name)}</span><span class="s"><span class="num">${esc(it.number || '')}</span> · ${esc(locPath(it.location_id) || 'No location')} · ${esc(onShelf(it))}</span></span>
       <span class="q">${fmtQty(l.qty)}</span></label>`; }).join('')}</div>
-    <p class="hint">Finishing makes a Take out Cart for this Job code. You can change it before saving.</p>
+    <p class="hint">Finishing makes a Take out Cart for this Job code. You can change it before submitting.</p>
     <div class="savebar"><button class="btn primary big" data-act="finishPick">Finish and make Take out</button></div>`;
 };
 CH.pickTick = (v, d, el) => { S.pickDraft.lines[d.n].picked = el.checked; queue('pick_progress', { id: S.pickDraft.id, lines: S.pickDraft.lines }); };

@@ -74,6 +74,7 @@ export function createMock() {
     const carts = db.carts.filter(c => c.kind === 'cart').map(c => {
       const ks = db.carts.filter(k => k.correction_of === c.id);
       return { ...c, note: ks.length ? ks[ks.length - 1].note : c.note, corrections: ks.length, cancelled: ks.some(k => k.cancelled),
+        original: ks.some(k => k.cancelled) ? db.lines.filter(l => l.cart_id === c.id && ['take', 'return'].includes(l.kind)) : null,
         lines: state(c.id), equipment: db.lines.filter(l => l.cart_id === c.id && ['checkout', 'checkin'].includes(l.kind)) };
     }).reverse();
     return { server_time: now(), settings: db.settings, users: db.users, items: db.items, photos: db.photos, locations: db.locations, fields: db.fields,

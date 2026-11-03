@@ -352,7 +352,7 @@ function reportTable(r) {
 }
 ACT.rpCsv = () => { if (!S.report) return toast('Run the report first'); downloadCsv(`${S.report.title} ${S.params.from || ''}.csv`.trim(), [S.report.head, ...S.report.rows]); };
 ACT.rpPrint = () => { if (!S.report) return toast('Run the report first'); const r = S.report;
-  printHtml(`<h1>${esc(r.title)}</h1><p>${['stock', 'low'].includes(S.params.kind) ? fmtD(new Date().toISOString()) : esc(S.params.from + ' to ' + S.params.to)}</p><table><thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row => `<tr>${row.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`); };
+  printHtml(`<h1>${esc(r.title)}</h1><p>${['stock', 'low'].includes(S.params.kind) ? fmtD(new Date().toISOString()) : esc(fmtYmd(S.params.from) + ' to ' + fmtYmd(S.params.to))}</p><table><thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row => `<tr>${row.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`); };
 
 // ------------------------------------------------------------------ people and PINs
 SCREENS.people = () => `<div class="head">${back('More', 'more')}<h1>People and PINs</h1></div>

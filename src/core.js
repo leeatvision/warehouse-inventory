@@ -16,16 +16,17 @@ const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
 const plural = (n, w, ws) => `${n} ${n === 1 ? w : (ws || w + 's')}`;
 
 function tz() { return (S.snap && S.snap.settings && S.snap.settings.timezone) || undefined; }
-function fmtDT(iso) {
-  if (!iso) return '';
-  try { return new Intl.DateTimeFormat(undefined, { timeZone: tz(), month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
-  catch { return new Date(iso).toLocaleString(); }
+// Dates are always MM/DD/YYYY, times 12-hour, in the branch's time zone.
+function dateParts(iso, time) {
+  const opts = { timeZone: tz(), month: '2-digit', day: '2-digit', year: 'numeric', ...(time ? { hour: 'numeric', minute: '2-digit', hour12: true } : {}) };
+  let f; try { f = new Intl.DateTimeFormat('en-US', opts); } catch { delete opts.timeZone; f = new Intl.DateTimeFormat('en-US', opts); }
+  const p = {}; for (const x of f.formatToParts(new Date(iso))) p[x.type] = x.value;
+  return p;
 }
-function fmtD(iso) {
-  if (!iso) return '';
-  try { return new Intl.DateTimeFormat(undefined, { timeZone: tz(), year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(iso)); }
-  catch { return new Date(iso).toLocaleDateString(); }
-}
+function fmtD(iso) { if (!iso) return ''; const p = dateParts(iso); return `${p.month}/${p.day}/${p.year}`; }
+function fmtDT(iso) { if (!iso) return ''; const p = dateParts(iso, true); return `${p.month}/${p.day}/${p.year} ${p.hour}:${p.minute} ${p.dayPeriod}`; }
+// A plain YYYY-MM-DD date (date fields, report ranges) shown as MM/DD/YYYY.
+const fmtYmd = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? `${m[2]}/${m[3]}/${m[1]}` : String(s || ''); };
 function ago(iso) {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
@@ -145,6 +146,8 @@ function setJobs(j) {
   const list = (j.jobs || []).map(a => ({ id: a[0], name: a[1], full: a[2] || a[1], parent: a[3], parentOnly: !!a[4], addr: a[5] || '' }));
   list.forEach(x => { x.n = norm(x.full + ' ' + x.addr); });
   S.jobs.list = list; S.jobs.byId = new Map(list.map(x => [x.id, x])); S.jobs.synced_at = j.synced_at;
+  // A list saved by an older version has no addresses: fetch it again.
+  S.jobs.old = !!(j.jobs && j.jobs.length && j.jobs[0].length < 6);
 }
 function startSyncLoop() {
   clearInterval(syncTimer); syncTimer = setInterval(() => sync(), 30000);
@@ -412,7 +415,7 @@ function updateStatus() { for (const id of ['#status', '#status-p']) { const el 
 function render() {
   const fn = SCREENS[S.screen] || SCREENS.home;
   const bare = S.screen === 'setup' || S.screen === 'boot';
-  const noBottom = ['cart', 'review', 'pick', 'count'].includes(S.screen);
+  const noBottom = ['pick', 'count'].includes(S.screen);
   $('#app').innerHTML = bare ? `<main class="bare">${fn()}</main>`
     : `<div class="shell ${S.user ? 'in' : 'out'} ${noBottom ? 'no-bottom' : ''}">${S.user ? sideNav() : ''}
         <div class="page">${phoneHead()}<main class="main screen-${esc(S.screen)}">${fn()}</main></div>${S.user ? bottomNav() : ''}</div>`;
@@ -572,6 +575,6 @@ async function boot() {
   history.replaceState({ screen: 'boot' }, '');
   if (!S.key) { go('setup'); return; }
   if (!S.snap) go('setup'); else if (!(await resumeSession())) go('signin');
-  startSyncLoop(); sync({ full: !S.jobs.list.length });
+  startSyncLoop(); sync({ full: !S.jobs.list.length || S.jobs.old });
 }
 document.addEventListener('DOMContentLoaded', boot);

@@ -128,13 +128,14 @@ function buildHtml(d, brand) {
   const sum = rows => rows.reduce((a, r) => a + Number(r.qty || 0), 0);
 
   const css = 'body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:' + INK + ';margin:0;line-height:1.35}' +
-    'table{border-collapse:collapse;width:100%}td,th{vertical-align:top}' +
+    'table{border-collapse:collapse;width:100%}td,th{vertical-align:top;font-size:10pt}' +
     '.lbl{font-size:7.5pt;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' + MUT + '}' +
     '.mono{font-family:"Courier New",monospace;font-size:9pt}' +
     '.items th{font-size:7.5pt;letter-spacing:.06em;text-transform:uppercase;color:' + MUT + ';text-align:left;padding:6pt 8pt;border-bottom:1.5pt solid ' + INK + '}' +
-    '.items td{padding:7pt 8pt;border-bottom:.75pt solid ' + LINE + '}' +
+    '.items td{padding:6pt 8pt;border-bottom:.75pt solid ' + LINE + ';font-size:10pt}' +
+    '.items td b{font-size:10pt}' +
     '.items tr.alt td{background:#F7F8F8}' +
-    '.items .q{text-align:right;font-weight:bold;font-size:12pt;white-space:nowrap}' +
+    '.items .q{text-align:right;font-weight:bold;font-size:11pt;white-space:nowrap}' +
     '.items .n{color:#3D3D3D;font-size:9pt}' +
     '.items .tot td{border-bottom:0;border-top:1.5pt solid ' + INK + ';font-weight:bold;padding-top:7pt}' +
     'h2{font-size:11pt;margin:18pt 0 6pt}h2 span{font-weight:normal;color:' + MUT + ';font-size:9.5pt}';
@@ -185,7 +186,7 @@ function buildHtml(d, brand) {
     itemsTable(d.original) + (d.cart.note && d.cart.note !== noteNow ? '<p style="margin-top:8pt;font-size:9.5pt"><span class="lbl">Original Cart note</span>&nbsp; ' + esc_(d.cart.note) + '</p>' : '');
 
   const logo = brand.logo ? '<img src="' + brand.logo + '" style="height:46pt">' : '<div style="font-size:16pt;font-weight:bold">' + esc_(brand.company || '') + '</div>';
-  return '<html><head><meta charset="utf-8"><style>' + css + '</style></head><body><div style="padding:36pt 40pt">' +
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body><div style="padding:36pt 40pt">' +
     '<table><tr><td style="width:55%">' + logo + '</td><td style="text-align:right"><div class="lbl">Material usage</div>' +
     '<div style="font-size:26pt;font-weight:bold;line-height:1.1">D' + d.doc_id + '</div>' +
     '<div style="display:inline-block;margin-top:4pt;padding:2pt 7pt;font-size:8pt;font-weight:bold;background:' + status[1] + ';color:' + status[2] + '">' + status[0] + '</div></td></tr></table>' +
@@ -197,9 +198,9 @@ function buildHtml(d, brand) {
     (addr ? (addr.source === 'site' ? 'Job site' : 'Billing address') : 'Job site') + '</div>' +
     (addr ? addr.lines.map(l => '<div style="font-size:11pt">' + esc_(l) + '</div>').join('') : '<div style="font-size:10pt;color:' + MUT + '">No address on file in QuickBooks</div>') +
     '</div></td><td><table style="font-size:9.5pt">' +
-    meta.map(m => '<tr><td style="color:' + MUT + ';padding:2pt 10pt 2pt 0;white-space:nowrap">' + m[0] + '</td><td style="font-weight:bold;padding:2pt 0">' + esc_(m[1]) + '</td></tr>').join('') +
+    meta.map(m => '<tr><td style="color:' + MUT + ';padding:2pt 10pt 2pt 0;white-space:nowrap;font-size:9.5pt">' + m[0] + '</td><td style="font-weight:bold;padding:2pt 0;font-size:9.5pt">' + esc_(m[1]) + '</td></tr>').join('') +
     '</table></td></tr></table>' + banner + body +
-    '<table style="margin-top:28pt;border-top:.75pt solid ' + LINE + ';font-size:7.5pt;color:' + MUT + '"><tr><td style="padding-top:6pt">' +
+    '<table style="margin-top:28pt;border-top:.75pt solid ' + LINE + ';color:' + MUT + '"><tr><td style="padding-top:6pt;font-size:7.5pt;color:' + MUT + '">' +
     esc_(brand.company ? brand.company + ' · ' : '') + 'Take outs only · Made ' + esc_(d.generated_at) + ' (' + esc_(d.timezone) + ')</td>' +
-    '<td style="padding-top:6pt;text-align:right">' + esc_(d.file_name) + '.pdf</td></tr></table></div></body></html>';
+    '<td style="padding-top:6pt;text-align:right;font-size:7.5pt;color:' + MUT + '">' + esc_(d.file_name) + '.pdf</td></tr></table></div></body></html>';
 }

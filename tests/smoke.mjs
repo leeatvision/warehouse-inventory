@@ -235,6 +235,17 @@ try {
     if (mock.db.carts.length !== before + 1) throw new Error('the same entry was applied twice');
     await nav(page, 'home');
   });
+  await step('cancel a Cart and see what was cancelled', async () => {
+    await nav(page, 'home'); await tap(page, '.hero'); await page.fill('[data-in=cartQ]', 'box'); await settle(page); await tap(page, '#finder [data-act=addItem]');
+    await tap(page, '.job-card'); await job(page, 'service'); await tap(page, '[data-act=review]'); await tap(page, '[data-act=saveCart]'); await page.waitForTimeout(1500);
+    const id = Math.max(...mock.db.carts.filter(c => c.kind === 'cart').map(c => c.id));
+    await page.evaluate(() => sync()); await page.waitForTimeout(800);
+    await nav(page, 'entries'); await page.evaluate(i => openModal('cartDetail', { id: i }), id); await settle(page);
+    await tap(page, '[data-act=cancelCart]'); await page.waitForTimeout(1500); await page.evaluate(() => sync()); await page.waitForTimeout(1000);
+    await page.evaluate(i => openModal('cartDetail', { id: i }), id); await settle(page); await shot(page, '27b-cancelled-cart');
+    if (!(await page.locator('.cancelled-lines .rv-row').count())) throw new Error('cancelled Cart does not show what was cancelled');
+    await page.evaluate(() => closeModal());
+  });
   await step('worker sign-in has no Manager tools', async () => {
     await tap(page, '[data-act=logout]'); await signIn(page, 'Sam Worker', '1357'); await shot(page, '27-home-user');
     if (await page.locator('[data-act=homeScope]').count()) throw new Error('worker sees everyone\'s entries');
@@ -252,10 +263,21 @@ try {
     await tap(phone, '[data-act=homeScope][data-s=mine]'); await settle(phone); await shot(phone, '31b-phone-home-mine'); await tap(phone, '[data-act=homeScope][data-s=all]');
     await tap(phone, '.entries-widget .see-all'); await phone.waitForSelector('text=All Carts'); await nav(phone, 'home');
     const top = await phone.evaluate(() => document.querySelector('.phead').getBoundingClientRect().top); if (top < 0) throw new Error('header starts off screen');
-    await tap(phone, '.hero'); await tap(phone, '.job-card'); await job(phone, 'smith');
+    await tap(phone, '.hero'); await phone.waitForSelector('.screen-cart');
+    if (!(await phone.locator('nav.bottom').isVisible())) throw new Error('bottom menu hidden on the Cart');
+    if (!(await phone.locator('.savebar .submit').isDisabled())) throw new Error('Submit should be grey with an empty Cart');
+    await tap(phone, '.job-card'); await phone.fill('[data-in=jobQ]', 'smith'); await settle(phone);
+    if (!(await phone.locator('#jobRes .row-i').first().innerText()).includes('Elm Rd')) throw new Error('no address in the phone Job code list');
+    await shot(phone, '32b-phone-job-picker'); await tap(phone, '#jobRes .row-i'); await settle(phone);
     await phone.fill('[data-in=cartQ]', 'wire'); await settle(phone); await shot(phone, '32a-phone-search');
     await tap(phone, '#finder .row-i'); await settle(phone);
     await phone.fill('[data-in=cartQ]', 'box'); await settle(phone); await tap(phone, '#finder .row-i'); await settle(phone); await shot(phone, '32-phone-cart');
+    if (await phone.locator('.savebar .submit').isDisabled()) throw new Error('Submit should be green with items');
+    await tap(phone, '.cp-line [data-act=lineMenu]'); await phone.fill('.modal [data-in=lineNote]', 'Kitchen'); await shot(phone, '32c-phone-line-menu');
+    await tap(phone, '[data-act=lineDone]'); await settle(phone);
+    if (!(await phone.locator('.cp-note').first().innerText()).includes('Kitchen')) throw new Error('line note not shown');
+    const sb = await phone.evaluate(() => [document.querySelector('.savebar').getBoundingClientRect().bottom, document.querySelector('nav.bottom').getBoundingClientRect().top]);
+    if (sb[0] > sb[1] + 1) throw new Error('Submit bar is behind the bottom menu ' + JSON.stringify(sb));
     await tap(phone, '[data-act=review]'); await phone.waitForSelector('.review'); await shot(phone, '33-phone-review');
     await tap(phone, '.savebar [data-to=cart]'); await nav(phone, 'catalogue'); await settle(phone); await shot(phone, '34-phone-catalogue');
     await nav(phone, 'more'); await shot(phone, '35-phone-more');

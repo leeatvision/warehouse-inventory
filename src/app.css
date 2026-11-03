@@ -1,6 +1,6 @@
 /* Layout and neutral colours. Brand colours (--brand-*), --on-brand and --brand-font come from brand.css.
    Three layouts: phone (bottom bar), tablet from 760px (icon rail), desktop from 1400px (full side menu). */
-:root {
+:root { --go: #2e7d32; --on-go: #ffffff;
   --bg: #fafafa; --panel: #ffffff; --sunk: #f4f4f4; --sunk-2: #ebebeb; --line: #e0e0e0; --line-2: #ebebeb; --line-strong: #c8c8c8;
   --ink: #1e1e1e; --ink-2: #3d3d3d; --muted: #606060; --faint: #a0a0a0;
   --warn: #7a4f00; --warn-bg: #fdf3e0; --warn-dot: #e8a020; --bad: #a33333; --bad-bg: #fdeaea; --bad-dot: #c94040;
@@ -54,7 +54,7 @@ p { margin: 0; }
 /* ------------------------------------------------------------------ frame */
 .shell { min-height: 100vh; }
 .page { min-width: 0; }
-.main { padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); max-width: 1440px; margin: 0 auto; }
+.main { padding: 16px 16px calc(100px + env(safe-area-inset-bottom)); max-width: 1440px; margin: 0 auto; }
 .shell.no-bottom .main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .shell.out .main { max-width: 560px; padding-bottom: 32px; }
 main.bare { padding: 16px; }
@@ -71,7 +71,7 @@ main.bare { padding: 16px; }
 
 .side { display: none; }
 .bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  background: var(--panel); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  background: var(--panel); border-top: 1px solid var(--line); padding: 6px 4px calc(12px + env(safe-area-inset-bottom)); }
 .bottom a { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-height: 52px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .bottom a.on { color: var(--brand-700); font-weight: 700; }
 .bottom .dot { position: absolute; top: 2px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--brand-500); color: var(--on-brand, #111);
@@ -477,3 +477,56 @@ table.t td { min-width: 64px; }
 @media (min-width: 1400px) {
   .desk-home .entries-widget .tag { display: inline-block; margin: 1px 0; }
 }
+
+/* ------------------------------------------------------------------ Submit: grey until there is something to submit, then green */
+.btn.submit { background: var(--go); border-color: var(--go); color: var(--on-go); font-weight: 700; }
+.btn.submit:hover { filter: brightness(1.06); }
+.btn.submit:disabled { background: var(--sunk-2); border-color: var(--line); color: var(--faint); filter: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --go: #4caf50; --on-go: #0b1a0c; } }
+:root[data-theme="dark"] { --go: #4caf50; --on-go: #0b1a0c; }
+
+/* ------------------------------------------------------------------ the Cart on a phone */
+@media (max-width: 759px) {
+  .cart-phone { gap: 10px; padding-bottom: 84px; }
+  .cp-head { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+  .cp-head h1 { flex: 1; font-size: 22px; }
+  .cp-head .for { font-size: 13px; }
+  .cp-head .for select { min-height: 34px; max-width: 46vw; font-size: 14px; }
+  .cart-phone .seg { padding: 3px; }
+  .cart-phone .seg button { min-height: 36px; font-size: 14px; }
+  .cart-phone .job-card { padding: 10px 12px; gap: 10px; }
+  .cart-phone .job-card .lbl { font-size: 11px; }
+  .cart-phone .job-card b { font-size: 16px; }
+  .cart-phone .job-card .addr { font-size: 12.5px; }
+  .cart-phone .field-search { min-height: 44px; }
+  .cp-lines-h { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 4px 2px 0; }
+  .cp-lines { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r2); background: var(--panel); overflow: hidden; }
+  .cp-line { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line-2); }
+  .cp-line:last-child { border-bottom: 0; }
+  .cp-line.missing { box-shadow: inset 3px 0 0 var(--bad-dot); }
+  .cp-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; background: none; padding: 0; text-align: left; color: var(--ink); }
+  .cp-info .t { font-size: 15px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+  .cp-info .s { font-size: 12.5px; color: var(--muted); }
+  .cp-flag { font-size: 12px; font-weight: 700; color: var(--brand-700); }
+  .cp-flag.bad { color: var(--bad); }
+  .cp-note { font-size: 13px; color: var(--ink-2); font-style: italic; overflow-wrap: anywhere; }
+  .cp-more { font-size: 12px; font-weight: 600; color: var(--brand-700); margin-top: 2px; }
+  .stepper.sm { flex: none; }
+  .stepper.sm button { width: 36px; height: 40px; font-size: 20px; }
+  .stepper.sm input { width: 44px; min-height: 40px; font-size: 16px; }
+  /* The Submit bar sits just above the bottom menu. */
+  .screen-cart .savebar, .screen-review .savebar { position: fixed; left: 0; right: 0; margin: 0; z-index: 25;
+    bottom: calc(75px + env(safe-area-inset-bottom)); padding: 10px 16px; box-shadow: 0 -4px 12px rgba(0,0,0,.06); }
+  .savebar.with-discard { grid-template-columns: auto 1fr; }
+  .discard-s { display: inline-flex; align-items: center; gap: 4px; color: var(--bad); padding: 0 14px; }
+  .screen-review .review { padding-bottom: 84px; }
+  .modal.sheet .lm-job { border: 1px solid var(--line); border-radius: var(--r2); }
+  .modal.sheet .lm-job .act { font-size: 14px; font-weight: 700; color: var(--brand-700); }
+}
+.cancelled-lines .rv-row .t, .cancelled-lines .rv-q { text-decoration: line-through; text-decoration-color: var(--bad); }
+
+@media (max-width: 759px) {
+  .screen-cart .savebar .btn, .screen-review .savebar .btn { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #toast { bottom: calc(160px + env(safe-area-inset-bottom)); }
+}
+.rv-row .grow > .tag, .row-i .grow > .tag { align-self: flex-start; }
