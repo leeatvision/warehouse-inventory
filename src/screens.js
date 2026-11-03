@@ -627,7 +627,7 @@ MODALS.cartDetail = () => {
   const rows = [...shownLines(c).map(l => ({ ...l })), ...c.equipment];
   return modal(`Cart ${c.id}`, `<dl class="kv"><dt>Submitted</dt><dd>${fmtDT(c.received_at)}</dd><dt>Entered by</dt><dd>${esc(userName(c.entered_by))}</dd>
       ${c.on_behalf_of ? `<dt>For</dt><dd>${esc(userName(c.on_behalf_of))}</dd>` : ''}${c.note ? `<dt>Note</dt><dd>${esc(c.note)}</dd>` : ''}</dl>
-    ${c.cancelled ? `<div class="msg bad">This Cart was cancelled. Everything below was undone and put back in stock, and its billing documents are marked cancelled.</div>` : ''}
+    ${c.cancelled ? `<div class="msg bad">This Cart was cancelled. Everything below was undone and put back in stock, and its billing PDFs are taken out of the billing folder.</div>` : ''}
     ${c.cancelled ? '<h3 class="sec-h">What was cancelled</h3>' : ''}${pending ? '<div class="msg warn">A Correction is waiting to send.</div>' : ''}
     <div class="card flat ${c.cancelled ? 'cancelled-lines' : ''}">${rows.map(l => { const it = item(l.item_id) || {}; return `<div class="rv-row"><span class="grow"><span class="tag ${l.kind}">${MODES[l.kind]}</span> <span class="t">${esc(it.name)}</span>
       <span class="s">${esc(jobLabel(l.jobcode_id))}${l.note ? ' · ' + esc(l.note) : ''}</span></span><b class="rv-q">${fmtQty(l.qty)}</b></div>`; }).join('') || '<div class="empty">No lines</div>'}</div>
@@ -645,7 +645,7 @@ ACT.correctCart = d => {
 ACT.cancelCart = async d => {
   const c = (S.snap.carts || []).find(x => x.id === Number(d.id));
   const what = c ? c.lines.map(l => `• ${fmtQty(l.qty)} × ${(item(l.item_id) || {}).name || '?'} (${MODES[l.kind]}, ${jobLabel(l.jobcode_id)})`).join('\n') : '';
-  if (!confirm(`Cancel Cart ${d.id}? These are undone and put back in stock, and the billing documents are marked cancelled:\n\n${what}`)) return;
+  if (!confirm(`Cancel Cart ${d.id}? These are undone and put back in stock, and its billing PDFs are taken out of the billing folder:\n\n${what}`)) return;
   const note = prompt('Correction note (optional)', '') || '';
   await queue('correction', { cart_id: Number(d.id), cancel: true, lines: [], correction_note: note });
   S.cart = null; S.modal = null; go('entries'); openModal('cartDetail', { id: Number(d.id) }); toast('Cart cancelled');

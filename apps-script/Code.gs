@@ -1,7 +1,7 @@
 /**
  * Warehouse billing delivery. Runs every 5 minutes in the Google account that owns the billing folder.
  * For every Cart and Job code with new or corrected Take outs, it saves one PDF into the folder and moves
- * the previous version of that document to Trash. Nothing is marked delivered until the PDF is saved,
+ * the previous version of that document to Trash. A cancelled Cart gets no PDF; its earlier PDF goes to Trash. Nothing is marked delivered until the PDF is saved,
  * so a failed run is simply retried 5 minutes later.
  *
  * Script properties (Project Settings > Script properties):
@@ -32,6 +32,12 @@ function deliver() {
       if (!docs.length) break;
       for (const d of docs) {
         try {
+          // Cancelled Carts never go to billing: move any earlier PDF of this document to Trash and make no new one.
+          if (d.cancelled) {
+            trashOlder_(folder, d, null);
+            rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision, p_file_id: null, p_file_name: null, p_error: null });
+            continue;
+          }
           const name = d.file_name + '.pdf';
           const pdf = Utilities.newBlob(buildHtml(d, brand), 'text/html', d.file_name + '.html').getAs('application/pdf').setName(name);
           const file = folder.createFile(pdf);
