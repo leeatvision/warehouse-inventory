@@ -35,6 +35,7 @@ function deliver() {
           const name = d.file_name + '.pdf';
           const pdf = Utilities.newBlob(buildHtml(d, brand), 'text/html', d.file_name + '.html').getAs('application/pdf').setName(name);
           const file = folder.createFile(pdf);
+          file.setDescription(docTag_(d));
           trashOlder_(folder, d, file.getId());
           rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision, p_file_id: file.getId(), p_file_name: name, p_error: null });
         } catch (e) {
@@ -48,16 +49,23 @@ function deliver() {
   }
 }
 
-// Move every earlier version of this document (same D number) to Trash, keeping the one just made.
+// Every version of a document carries the same tag in its Drive description, e.g. "Billing document D457".
+function docTag_(d) { return 'Billing document D' + d.doc_id; }
+
+// Move every earlier version of this document to Trash, keeping the one just made. Older files were named with
+// "_D457" at the end instead of the tag, so those are found by name.
 function trashOlder_(folder, d, keepId) {
-  const suffix = '_D' + d.doc_id + '.pdf';
+  const tag = docTag_(d), suffix = '_D' + d.doc_id + '.pdf';
   if (d.old_file_id && d.old_file_id !== keepId) {
     try { DriveApp.getFileById(d.old_file_id).setTrashed(true); } catch (e) { /* already gone or moved out of reach */ }
   }
-  const it = folder.searchFiles('title contains "_D' + d.doc_id + '" and trashed = false');
-  while (it.hasNext()) {
-    const f = it.next();
-    if (f.getId() !== keepId && f.getName().endsWith(suffix)) f.setTrashed(true);
+  const searches = ['fullText contains "' + tag + '" and trashed = false', 'title contains "_D' + d.doc_id + '" and trashed = false'];
+  for (const q of searches) {
+    const it = folder.searchFiles(q);
+    while (it.hasNext()) {
+      const f = it.next();
+      if (f.getId() !== keepId && (f.getDescription() === tag || f.getName().endsWith(suffix))) f.setTrashed(true);
+    }
   }
 }
 

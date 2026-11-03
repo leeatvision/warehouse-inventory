@@ -14,32 +14,46 @@ function lineEditor(key, cols) {
     <div class="list">${ed.lines.map((l, n) => { const it = item(l.item_id) || {}; return `<div class="line">
       <div><b>${esc(it.name)}</b> <span class="num">${esc(it.number || 'new')}</span><div class="small muted">${esc(onShelf(it))}</div></div>
       <label class="small" style="text-align:right">${esc(cols.qtyLabel || 'Quantity')}<input type="number" inputmode="decimal" step="any" min="0" value="${l.qty ?? ''}"
-        data-in="edQty" data-key="${key}" data-n="${n}" style="width:100px;margin-left:6px"></label>
+        data-in="edQty" data-key="${key}" data-n="${n}" style="width:100px;margin-left:6px">${key === 'adjust' ? `<span class="chg" id="chg-${n}">${adjChange(l)}</span>` : ''}</label>
       <div class="meta">
         ${cols.job ? `<button class="jobchip ${l.jobcode_id ? 'set' : 'missing'}" data-act="edJob" data-key="${key}" data-n="${n}">${l.jobcode_id ? esc(jobLabel(l.jobcode_id)) : 'Choose Job code'}</button>` : ''}
-        ${cols.reason ? `<select data-ch="edReason" data-key="${key}" data-n="${n}" style="width:auto;min-height:36px">${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select>` : ''}
+        ${cols.reason ? `<select data-ch="edReason" data-key="${key}" data-n="${n}" style="width:auto;min-height:36px" aria-label="Reason"><option value="">Reason: recount (more or fewer)</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select>` : ''}
         ${cols.note ? `<input class="note-in grow" type="text" placeholder="Line note" value="${esc(l.note || '')}" data-in="edNote" data-key="${key}" data-n="${n}" style="width:auto">` : '<span class="grow"></span>'}
         <button class="btn tiny ghost" data-act="edRm" data-key="${key}" data-n="${n}" aria-label="Remove">✕</button></div></div>`; }).join('') || '<div class="empty">No lines yet.</div>'}</div></div>`;
 }
 const REASONS = ['Initial count', 'Recount found more', 'Recount found fewer', 'Damaged and thrown away', 'Other'];
+// What an adjustment will change, shown beside the new count before saving.
+function adjChange(l) {
+  if (l.qty === '' || l.qty === null || l.qty === undefined) return '';
+  const d = num(l.qty) - num((item(l.item_id) || {}).qty);
+  return d === 0 ? 'No change' : `Change ${d > 0 ? '+' : '−'}${fmtQty(Math.abs(d))}`;
+}
+function adjReason(l) {
+  if (l.reason) return l.reason;
+  const d = num(l.qty) - num((item(l.item_id) || {}).qty);
+  return d > 0 ? 'Recount found more' : d < 0 ? 'Recount found fewer' : 'Recount, no change';
+}
 function addEdLine(key, id) {
   const ed = S.le[key]; const it = item(id); if (!it) return;
   if (ed.lines.some(l => l.item_id === id)) return toast('Already on the list');
-  ed.lines.push({ item_id: id, qty: key === 'adjust' ? num(it.qty) : 1, reason: REASONS[1], jobcode_id: ed.lines.length ? ed.lines[ed.lines.length - 1].jobcode_id : null, note: '' });
+  ed.lines.push({ item_id: id, qty: key === 'adjust' ? num(it.qty) : 1, reason: '', jobcode_id: ed.lines.length ? ed.lines[ed.lines.length - 1].jobcode_id : null, note: '' });
   closeModal(); render();
 }
-ACT.edAdd = d => openModal('itemPick', { q: '', onPick: id => addEdLine(d.key, id),
+ACT.edAdd = d => openModal('itemPick', { q: '', onPick: id => addEdLine(d.key, id), allowNew: d.key !== 'supplierReturn',
   filter: d.key === 'supplierReturn' ? (i => i.kind === 'consumable') : d.key === 'adjust' || d.key === 'receive' ? (i => i.kind === 'consumable' || i.counted) : null });
-IN.edQty = (v, d) => { S.le[d.key].lines[d.n].qty = v === '' ? '' : num(v); };
+IN.edQty = (v, d) => { const l = S.le[d.key].lines[d.n]; l.qty = v === '' ? '' : num(v); const c = $('#chg-' + d.n); if (c) c.textContent = adjChange(l); };
 IN.edNote = (v, d) => { S.le[d.key].lines[d.n].note = v; };
 CH.edReason = (v, d) => { S.le[d.key].lines[d.n].reason = v; };
 ACT.edRm = d => { S.le[d.key].lines.splice(Number(d.n), 1); render(); };
 ACT.edJob = d => openModal('job', { onPick: id => { S.le[d.key].lines[d.n].jobcode_id = id; setTimeout(render); } });
 
-MODALS.itemPick = () => modal('Add an item', `<input type="search" placeholder="Search name or Item number" value="${esc(S.modal.q)}" data-in="ipQ" data-enter="ipEnter" data-autofocus autocomplete="off">
+MODALS.itemPick = () => modal('Add an item', `<div class="ip-top"><input type="search" placeholder="Search name or Item number" value="${esc(S.modal.q)}" data-in="ipQ" data-enter="ipEnter" data-autofocus autocomplete="off">
+  ${S.modal.allowNew && isManager() ? `<button class="btn" data-act="ipNew">${icon('plus', 18)}New catalogue item</button>` : ''}</div>
   ${region('ipRes', () => `<div class="list">${searchItems(S.modal.q, S.modal.filter || (() => true), 40).map(i => itemRow(i, 'ipPick')).join('') || '<div class="empty">No match</div>'}</div>`)}`);
 IN.ipQ = v => { S.modal.q = v; refresh('ipRes'); fillPhotos($('#modal-host')); };
 ACT.ipPick = d => S.modal.onPick(d.id);
+// Not in the Catalogue yet: make the item, then it goes straight onto the list.
+ACT.ipNew = () => { const m = S.modal; ACT.newItem({ name: m.q.trim(), onSaved: m.onPick }); };
 ACT.ipEnter = () => { const it = itemByCode(S.modal.q); if (it) S.modal.onPick(it.id); };
 
 // ------------------------------------------------------------------ receive, adjust, supplier return
@@ -87,7 +101,7 @@ ACT.saveLe = async d => {
   if (d.key === 'receive' && ed.source && ed.source !== 'supplier')
     note = [ed.source === 'back' ? RCV_SOURCES.back : 'Other: ' + String(ed.reason).trim(), note].filter(Boolean).join(' · ');
   await queue(op, { po_id: ed.po_id || undefined, note, source: d.key === 'receive' ? ed.source : undefined, count_id: ed.count_id || undefined,
-    lines: lines.map(l => ({ item_id: l.item_id, qty: num(l.qty), jobcode_id: l.jobcode_id || undefined, note: l.note || '', reason: d.key === 'adjust' ? l.reason : undefined })) });
+    lines: lines.map(l => ({ item_id: l.item_id, qty: num(l.qty), jobcode_id: l.jobcode_id || undefined, note: l.note || '', reason: d.key === 'adjust' ? adjReason(l) : undefined })) });
   delete S.le[d.key]; go('home'); toast('Saved');
 };
 
@@ -307,8 +321,8 @@ async function buildReport(p) {
   if (p.kind === 'moves' || p.kind === 'flow') {
     const rows = (await fetchRange('ledger')).filter(l => itemOk(l.item_id) && uOk(l.user_id, l.on_behalf_of) && jOk(l.jobcode_id) && (p.kind === 'flow' || l.kind === 'move'));
     if (p.kind === 'moves') return { title: REPORTS.moves, head: ['When', 'Item number', 'Item', 'From', 'To', 'Who'], rows: rows.map(l => [fmtDT(l.at), nr(l.item_id), name(l.item_id), locPath(l.from_location), locPath(l.to_location), userName(l.user_id)]) };
-    return { title: REPORTS.flow, head: ['When', 'Item number', 'Item', 'What', 'Change', 'Count after', 'Job code', 'Who', 'Cart'], num: [4, 5],
-      rows: rows.filter(l => l.kind !== 'move').map(l => [fmtDT(l.at), nr(l.item_id), name(l.item_id), KIND_NAMES[l.kind] || l.kind, (num(l.delta) > 0 ? '+' : '') + fmtQty(l.delta), fmtQty(l.qty_after), jobLabel(l.jobcode_id), userName(l.user_id) + (l.on_behalf_of ? ' for ' + userName(l.on_behalf_of) : ''), l.cart_id || ''] ) };
+    return { title: REPORTS.flow, head: ['When', 'Item number', 'Item', 'What', 'Before', 'Change', 'After', 'Job code', 'Who', 'Cart', 'Note'], num: [4, 5, 6],
+      rows: rows.filter(l => l.kind !== 'move').map(l => [fmtDT(l.at), nr(l.item_id), name(l.item_id), KIND_NAMES[l.kind] || l.kind, fmtQty(num(l.qty_after) - num(l.delta)), (num(l.delta) > 0 ? '+' : '') + fmtQty(l.delta), fmtQty(l.qty_after), jobLabel(l.jobcode_id), userName(l.user_id) + (l.on_behalf_of ? ' for ' + userName(l.on_behalf_of) : ''), l.cart_id || '', l.note || ''] ) };
   }
   const carts = await fetchRange('carts');
   if (p.kind === 'users') {

@@ -435,6 +435,47 @@ table.t td { min-width: 64px; }
 .home-wide { margin-top: 28px; }
 
 /* Job site address under a Job code */
-.row-i .s.addr { display: flex; align-items: center; gap: 4px; }
-.row-i .s.addr svg { flex: none; opacity: .7; }
+.row-i .job-sub { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 2px; }
+.row-i .job-sub .client { font-weight: 600; color: var(--ink-2); }
+.row-i .job-sub .addr { display: inline-flex; align-items: center; gap: 4px; }
+.row-i .job-sub .addr svg { flex: none; opacity: .7; }
 .job-card .addr, .card-h .addr { display: block; font-size: 13px; font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Discard a Cart before saving it */
+.btn.discard { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 14px; }
+
+.ip-top { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+.ip-top input { flex: 1 1 220px; }
+.ip-top .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+.line .chg { display: block; margin-top: 4px; font-weight: 700; color: var(--ink-2); }
+
+/* ------------------------------------------------------------------ desktop: use the full width */
+@media (min-width: 1400px) {
+  .main { max-width: none; }
+  .home { max-width: none; }
+  .desk-home .dh-top { display: grid; grid-template-columns: minmax(240px, auto) minmax(0, 1fr); gap: 32px; align-items: end; margin-bottom: 24px; }
+  .desk-home .dh-top .head-big { margin: 0; }
+  .desk-home .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .desk-home .stat { padding: 14px 18px; }
+  .dh-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 28px; align-items: start; }
+  .dh-start { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .dh-start .actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .dh-start .action { min-height: 96px; }
+  .dh-side .sec-row { display: flex; align-items: center; justify-content: space-between; }
+}
+@media (min-width: 1800px) {
+  .dh-grid { grid-template-columns: minmax(0, 1fr) 480px; }
+  .dh-start { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: stretch; }
+  .dh-start .hero { height: 100%; }
+}
+
+/* Recycle bin */
+.bin-bar { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.bin-row { display: flex; align-items: center; gap: 12px; }
+.bin-open { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; border: 0; background: none; padding: 0; text-align: left; color: var(--ink); }
+.bin-row.sel { background: var(--brand-50); }
+@media (min-width: 1400px) {
+  .desk-home .entries-widget table.t td:nth-last-child(3) { min-width: 200px; }
+  .desk-home .entries-widget .tag { display: inline-block; margin: 1px 0; }
+}

@@ -69,22 +69,22 @@ ACT.pickUser = d => openModal('pin', { userId: Number(d.id), entry: '', mode: 's
 const pinLock = new Map();
 MODALS.pin = () => {
   const m = S.modal; const u = V().users.get(m.userId);
-  const title = m.mode === 'signin' ? esc(u.name) : m.step === 2 ? 'Enter the new PIN again' : `New PIN for ${esc(u.name)}`;
+  const title = m.mode === 'signin' ? esc(u.name) : m.mode === 'confirm' ? esc(m.title || 'Enter your PIN') : m.step === 2 ? 'Enter the new PIN again' : `New PIN for ${esc(u.name)}`;
   return modal(title, `<div class="dots ${m.shake ? 'shake' : ''}">${Array.from({ length: Math.max(4, m.entry.length) }, (_, i) => `<i class="${i < m.entry.length ? 'on' : ''}"></i>`).join('')}</div>
     ${m.msg ? `<div class="msg ${m.msgKind || 'bad'} center">${esc(m.msg)}</div>` : ''}
     <div class="pinpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-act="pinKey" data-k="${n}">${n}</button>`).join('')}
       <button data-act="pinKey" data-k="clear" class="word">Clear</button><button data-act="pinKey" data-k="0">0</button>
       <button data-act="pinKey" data-k="ok" class="word ok">OK</button></div>
-    <p class="muted small center">${m.mode === 'signin' ? '' : '4 to 8 digits'}</p>`, '', false, 'pin');
+    <p class="muted small center">${m.mode === 'confirm' ? esc(m.note || `${u.name}, enter your PIN to confirm.`) : m.mode === 'signin' ? '' : '4 to 8 digits'}</p>`, '', false, 'pin');
 };
 ACT.pinKey = async d => {
-  const m = S.modal; m.shake = false; m.msg = '';
+  const m = S.modal; if (!m || m.kind !== 'pin') return; m.shake = false; m.msg = '';
   if (d.k === 'clear') m.entry = '';
   else if (d.k === 'ok') return pinSubmit();
   else if (m.entry.length < 8) m.entry += d.k;
-  if (m.mode === 'signin' && m.entry.length >= 4) {
+  if ((m.mode === 'signin' || m.mode === 'confirm') && m.entry.length >= 4) {
     const u = V().users.get(m.userId);
-    if (await checkPin(u, m.entry)) return finishSignIn(u);
+    if (await checkPin(u, m.entry)) return m.mode === 'confirm' ? pinConfirmed() : finishSignIn(u);
   }
   renderModal();
 };
@@ -96,10 +96,10 @@ document.addEventListener('keydown', e => {
 });
 async function pinSubmit() {
   const m = S.modal; const u = V().users.get(m.userId);
-  if (m.mode === 'signin') {
+  if (m.mode === 'signin' || m.mode === 'confirm') {
     const lock = pinLock.get(u.id);
     if (lock && lock.until > Date.now()) { m.msg = `Too many tries. Wait ${Math.ceil((lock.until - Date.now()) / 1000)} seconds.`; return renderModal(); }
-    if (await checkPin(u, m.entry)) return finishSignIn(u);
+    if (await checkPin(u, m.entry)) return m.mode === 'confirm' ? pinConfirmed() : finishSignIn(u);
     const l = pinLock.get(u.id) || { n: 0, until: 0 }; l.n++; if (l.n >= 5) { l.until = Date.now() + 60000; l.n = 0; } pinLock.set(u.id, l);
     m.entry = ''; m.shake = true; m.msg = 'Wrong PIN'; return renderModal();
   }
@@ -111,9 +111,16 @@ async function pinSubmit() {
   closeModal(); toast(`PIN set for ${u.name}`);
   if (m.firstSetup) { await sync(); go('signin'); } else render();
 }
+// Ask the signed-in person for their PIN again before something that can't be undone.
+function confirmWithPin(title, note, onOk) { openModal('pin', { userId: S.user.id, entry: '', mode: 'confirm', title, note, onOk }); }
+function pinConfirmed() {
+  const m = S.modal; if (!m || !m.onOk) return; const f = m.onOk; m.onOk = null;
+  pinLock.delete(m.userId); closeModal(); f();
+}
 function finishSignIn(u) {
-  pinLock.delete(u.id); S.user = u; S.modal = null; lastTap = Date.now(); whoQ = '';
-  go('home'); toast(`Signed in as ${u.name}`);
+  if (S.user) return; // already signed in (the last digit and OK can both arrive)
+  pinLock.delete(u.id); closeModal(); whoQ = '';
+  startSession(u).then(() => toast(S.cart && S.cart.lines.length ? `Signed in as ${u.name}. Your Cart is still here.` : `Signed in as ${u.name}`));
 }
 ACT.setPinFor = d => openModal('pin', { userId: Number(d.id), entry: '', mode: 'set', step: 1, firstSetup: !!d.first });
 
@@ -145,12 +152,14 @@ SCREENS.home = () => {
   const recent = myRecentCarts();
   const card = (to, ic, title, sub) => `<button class="action" data-act="go" data-to="${to}">${icon(ic, 26)}<b>${title}</b><span>${sub}</span></button>`;
   const desk = isDesk() && isManager();
+  if (desk) return deskHome({ card, mineOut, openPicks, myCounts, alerts });
   return `<div class="home">
     <div class="head-big"><p class="muted">${esc(todayLabel())}</p><h1>${greeting()}</h1></div>
     <div class="home-grid ${desk ? 'desk' : ''}">
       <div class="stack-l">
         <button class="hero" data-act="go" data-to="cart?mode=take"><span class="hero-ic">${icon('swap', 28)}</span>
-          <span class="grow"><b>Take out or return</b><span>Parts for a Job code</span></span>${icon('chevron', 22)}</button>
+          <span class="grow"><b>${S.cart && S.cart.lines.length ? (S.cart.correction ? 'Finish your Correction' : 'Finish your Cart') : 'Take out or return'}</b>
+          <span>${S.cart && S.cart.lines.length ? `${plural(S.cart.lines.length, 'item')} waiting to be saved` : 'Parts for a Job code'}</span></span>${icon('chevron', 22)}</button>
         <div class="actions">
           ${card('cart?mode=equipment', 'tool', 'Equipment', mineOut ? `${plural(mineOut, 'item')} checked out to you` : 'Check out or check in')}
           ${card('entries', 'list', 'My entries', 'Fix the last 2 weeks')}
@@ -171,6 +180,42 @@ function alertRow(a) {
   return `<button class="row-i" ${a.item ? `data-act="openItem" data-id="${a.item}"` : a.to ? `data-act="go" data-to="${a.to}"` : ''}>
     <span class="dot-s ${a.kind}"></span><span class="grow"><span class="t">${esc(a.text)}</span><span class="s">${esc(a.sub)}</span></span></button>`;
 }
+// Home for Managers on a desktop: numbers across the top, work on the left, what needs attention on the right.
+function deskHome({ card, mineOut, openPicks, myCounts, alerts }) {
+  const v = V();
+  const outs = v.checkouts.slice().sort((a, b) => String(a.opened_at).localeCompare(String(b.opened_at)));
+  const picks = v.picks.filter(p => p.status === 'open');
+  const counts = v.counts.filter(c => c.status === 'open' || c.status === 'submitted');
+  const side = (title, to, rows, emptyText, total) => `<section class="sec"><div class="sec-row"><h2 class="sec-h">${title}</h2>${total ? `<span class="pill">${total}</span>` : ''}</div>
+    <div class="card flat list">${rows || `<div class="empty">${emptyText}</div>`}
+    ${to && total > 6 ? `<button class="row-i" data-act="go" data-to="${to}"><span class="grow t">See all ${total}</span>${icon('chevron', 18, 'class="ico chev"')}</button>` : ''}</div></section>`;
+  return `<div class="home desk-home">
+    <div class="dh-top"><div class="head-big"><p class="muted">${esc(todayLabel())}</p><h1>${greeting()}</h1></div>${deskStats()}</div>
+    <div class="dh-grid">
+      <div class="stack-l">
+        <div class="dh-start">
+          <button class="hero" data-act="go" data-to="cart?mode=take"><span class="hero-ic">${icon('swap', 28)}</span>
+            <span class="grow"><b>${S.cart && S.cart.lines.length ? (S.cart.correction ? 'Finish your Correction' : 'Finish your Cart') : 'Take out or return'}</b>
+            <span>${S.cart && S.cart.lines.length ? `${plural(S.cart.lines.length, 'item')} waiting to be saved` : 'Parts for a Job code'}</span></span>${icon('chevron', 22)}</button>
+          <div class="actions">
+            ${card('cart?mode=equipment', 'tool', 'Equipment', mineOut ? `${plural(mineOut, 'item')} checked out to you` : 'Check out or check in')}
+            ${card('receive', 'plus', 'Receive items', 'Deliveries and parts back')}
+            ${card('catalogue', 'box', 'Catalogue', 'Find any item')}
+            ${card('reports', 'list', 'Reports', 'History, stock, moves')}
+          </div>
+        </div>
+        ${entriesWidget()}
+      </div>
+      <div class="stack-l dh-side">
+        ${side('Needs a look', 'alerts', alerts.slice(0, 6).map(alertRow).join(''), 'Nothing needs a look.', alerts.length)}
+        ${side('Equipment out', 'catalogue?stock=out', outs.slice(0, 6).map(c => { const it = item(c.item_id) || {}; return `<button class="row-i" data-act="openItem" data-id="${c.item_id}"><span class="grow"><span class="t">${esc(it.name || '')}</span>
+          <span class="s">${esc(userName(c.user_id))} · since ${fmtD(c.opened_at)}${c.jobcode_id ? ' · ' + esc(jobLabel(c.jobcode_id)) : ''}</span></span>${it.counted ? `<b>${fmtQty(num(c.qty) - num(c.qty_returned))}</b>` : ''}</button>`; }).join(''), 'Nothing checked out.', outs.length)}
+        ${side('Pick lists and counts', null, [...picks.map(p => `<button class="row-i" data-act="go" data-to="pick" data-id="${p.id}"><span class="grow"><span class="t">${esc(p.name || 'Pick list')}</span><span class="s">Pick list${p.jobcode_id ? ' · ' + esc(jobLabel(p.jobcode_id)) : ''}</span></span>${icon('chevron', 18, 'class="ico chev"')}</button>`),
+          ...counts.map(c => `<button class="row-i" data-act="go" data-to="${c.status === 'submitted' ? 'countReview' : 'count'}" data-id="${c.id}"><span class="grow"><span class="t">${esc(c.name || 'Stock count')}</span><span class="s">Stock count · ${c.status === 'submitted' ? 'ready to review' : 'open'}</span></span>${icon('chevron', 18, 'class="ico chev"')}</button>`)].slice(0, 6).join(''),
+          'No open pick lists or counts.', picks.length + counts.length)}
+      </div>
+    </div></div>`;
+}
 // Summary cards for Managers on desktop.
 function deskStats() {
   const day = new Date().toDateString();
@@ -190,7 +235,7 @@ function deskStats() {
 let homeScope = null;
 function entriesWidget() {
   const mgr = isManager(); const scope = mgr ? (homeScope || 'all') : 'mine';
-  const me = S.user.id; const limit = isDesk() ? 8 : isWide() ? 6 : 5;
+  const me = S.user.id; const limit = isDesk() ? 12 : isWide() ? 6 : 5;
   const all = (S.snap.carts || []).filter(c => scope === 'all' || c.entered_by === me || c.on_behalf_of === me);
   const pend = V().pendingCarts.filter(o => scope === 'all' || o.user_id === me || (o.data && o.data.on_behalf_of === me));
   const list = all.slice(0, Math.max(0, limit - pend.length));
@@ -376,8 +421,14 @@ function cartLinesHtml() {
   if (!isWide() && c.q) return '';
   if (!c.lines.length) return `<div class="empty card flat">${isWide() ? 'Tap + on an item to add it.' : 'Search or scan to add items.'}</div>
     ${c.correction ? `<button class="btn danger" data-act="cancelCart" data-id="${c.correction.cart_id}">Cancel the whole Cart instead</button>` : ''}`;
-  return `<div class="lines">${c.lines.map(lineHtml).join('')}</div>`;
+  return `<div class="lines">${c.lines.map(lineHtml).join('')}</div>
+    <button class="btn danger discard" data-act="discardCart">${icon('x', 18)}${c.correction ? 'Discard this Correction' : 'Discard this Cart'}</button>`;
 }
+ACT.discardCart = () => {
+  const c = S.cart; if (!c) return;
+  if (!confirm(c.correction ? `Discard this Correction? Cart ${c.correction.cart_id} stays as it was.` : `Discard this Cart and its ${plural(c.lines.length, 'item')}? Nothing is saved.`)) return;
+  S.cart = null; saveCartDraft(); go('home'); toast(c.correction ? 'Correction discarded' : 'Cart discarded');
+};
 function lineHtml(l) {
   const c = S.cart; const it = item(l.item_id) || { name: '?', number: '' };
   const fixed = l.kind === 'checkin' || (l.kind === 'checkout' && !it.counted);
@@ -430,8 +481,8 @@ function jobResHtml() {
 function jobLi(j) {
   const parts = j.full.split(/\s*:\s*|\s*=>\s*/);
   return `<button class="row-i" data-act="setJob" data-id="${j.id}"><span class="grow"><span class="t">${esc(parts[parts.length - 1])}</span>
-    ${parts.length > 1 ? `<span class="s">${esc(parts.slice(0, -1).join(' › '))}</span>` : ''}
-    ${j.addr ? `<span class="s addr">${icon('pin', 14)}${esc(j.addr)}</span>` : ''}</span></button>`;
+    ${parts.length > 1 || j.addr ? `<span class="s job-sub">${parts.length > 1 ? `<span class="client">${esc(parts.slice(0, -1).join(' › '))}</span>` : ''}
+      ${j.addr ? `<span class="addr">${icon('pin', 14)}${esc(j.addr)}</span>` : ''}</span>` : ''}</span></button>`;
 }
 IN.jobQ = v => { S.modal.q = v; refresh('jobRes'); };
 const _openModal = openModal;
@@ -576,7 +627,8 @@ SCREENS.catalogue = () => {
         ${locs.length ? `<select class="chip-sel" data-ch="catF" data-f="loc" aria-label="Location"><option value="">Any location</option>${locs.map(l => `<option value="${l.id}" ${p.loc === l.id ? 'selected' : ''}>${esc(locPath(l.id))}</option>`).join('')}</select>` : ''}
         ${tags.length ? `<select class="chip-sel" data-ch="catF" data-f="tag" aria-label="Tag"><option value="">Any tag</option>${tags.map(t => `<option ${p.tag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}
         <select class="chip-sel" data-ch="catF" data-f="sort" aria-label="Sort"><option value="">Name</option><option value="number" ${p.sort === 'number' ? 'selected' : ''}>Item number</option><option value="qty" ${p.sort === 'qty' ? 'selected' : ''}>Count</option><option value="changed" ${p.sort === 'changed' ? 'selected' : ''}>Last change</option></select>
-        ${isManager() ? `<button class="chip-f ${p.stock === 'archived' ? 'on' : ''}" data-act="catChip" data-k="archived">Archived</button>` : ''}</div>
+        ${isManager() ? `<button class="chip-f ${p.stock === 'archived' ? 'on' : ''}" data-act="catChip" data-k="archived">Recycle bin${binList().length ? ' · ' + binList().length : ''}</button>` : ''}</div>
+      ${p.stock === 'archived' ? '<div class="msg info small">Deleted items wait here with their history. Restore one, or delete it forever.</div>' : ''}
       ${p.labels ? `<div class="msg info row"><span class="grow">Tick items, then print. Labels fit 30-per-sheet address label paper.</span>
         <button class="btn small" data-act="labelAll">Tick all shown</button><button class="btn small primary" data-act="printLabels">Print ${(p.picked || []).length} labels</button></div>` : ''}
     </div>${region('catList', catListHtml)}`;
@@ -591,9 +643,42 @@ ACT.catChip = d => {
   else { p.kind = ''; p.stock = ''; }
   render();
 };
+// The Recycle bin: deleted items, which keep their history. Items deleted forever are gone from the app.
+const isPurged = i => !!(i.purged_at || i.purged);
+function binList() { return V().itemList.filter(i => i.archived && !isPurged(i)); }
+function itemData(i, extra = {}) {
+  return { id: i.id, kind: i.kind, name: i.name, description: i.description || '', location_id: i.location_id || null, tags: i.tags || [],
+    custom: i.custom || {}, low_stock: i.low_stock ?? null, counted: !!i.counted, archived: !!i.archived, ...extra };
+}
+function afterBinChange() { closeModal(); if (S.screen === 'catalogue') { S.params.sel = null; render(); } }
+ACT.binItem = async d => {
+  const i = item(d.id); if (!i) return;
+  if (V().checkouts.some(c => c.item_id === i.id)) return toast('Checked out. Check it in before deleting it.', 4000);
+  if (!confirm(`Delete ${i.name}? It moves to the Recycle bin with its history. You can restore it from there.`)) return;
+  await queue('item_save', itemData(i, { archived: true })); afterBinChange(); toast('Moved to the Recycle bin');
+};
+ACT.restoreItem = async d => { const i = item(d.id); await queue('item_save', itemData(i, { archived: false })); afterBinChange(); toast('Restored to the Catalogue'); };
+function purgeItems(ids) {
+  const its = ids.map(item).filter(i => i && i.archived && !isPurged(i)); if (!its.length) return toast('Tick the items first');
+  if (!isManager()) return;
+  const what = its.length === 1 ? its[0].name : plural(its.length, 'item');
+  confirmWithPin(`Delete ${what} forever?`, "This can't be undone. Past Carts, reports and billing documents still show these items, because they are the record of what happened. Enter your PIN to confirm.", async () => {
+    for (const i of its) await queue('item_save', itemData(i, { archived: true, purged: true }));
+    S.params.picked = []; afterBinChange(); toast(`Deleted ${what} forever`);
+  });
+}
+ACT.purgeItem = d => purgeItems([d.id]);
+ACT.purgePicked = () => purgeItems(S.params.picked || []);
+ACT.restorePicked = async () => {
+  const its = (S.params.picked || []).map(item).filter(i => i && i.archived && !isPurged(i)); if (!its.length) return toast('Tick the items first');
+  for (const i of its) await queue('item_save', itemData(i, { archived: false }));
+  S.params.picked = []; afterBinChange(); toast(`Restored ${plural(its.length, 'item')}`);
+};
+ACT.binAll = () => { const all = catFiltered().map(i => i.id); S.params.picked = (S.params.picked || []).length === all.length ? [] : all; refresh('catList'); };
+CH.binPick = (v, d, el) => { const s = new Set(S.params.picked || []); el.checked ? s.add(d.id) : s.delete(d.id); S.params.picked = [...s]; refresh('binBar'); };
 function catFiltered() {
-  const p = S.params;
-  let list = p.stock === 'archived' ? V().itemList.filter(i => i.archived) : searchItems(p.q, () => true, 5000);
+  const p = S.params; if (p.stock === 'archived' && !isManager()) p.stock = '';
+  let list = p.stock === 'archived' ? binList() : searchItems(p.q, () => true, 5000);
   if (p.stock === 'archived' && p.q) list = list.filter(i => norm(i.name + ' ' + i.number).includes(norm(p.q)));
   list = list.filter(i => (!p.kind || i.kind === p.kind) && (!p.loc || i.location_id === p.loc) && (!p.tag || (i.tags || []).includes(p.tag)));
   if (p.stock === 'low') list = list.filter(i => i.low_stock !== null && i.low_stock !== undefined && num(i.qty) <= num(i.low_stock) || num(i.qty) < 0);
@@ -604,6 +689,16 @@ function catFiltered() {
 }
 function catListHtml() {
   const p = S.params; const list = catFiltered();
+  if (!list.length && p.stock === 'archived') return '<div class="empty card flat">The Recycle bin is empty.</div>';
+  if (p.stock === 'archived') {
+    const ticked = new Set(p.picked || []);
+    return `${region('binBar', () => { const n = (p.picked || []).length; return `<div class="row bin-bar"><span class="muted grow">${plural(list.length, 'item')} in the bin${n ? ` · ${n} ticked` : ''}</span>
+        <button class="btn small" data-act="binAll">${n === list.length ? 'Untick all' : 'Tick all'}</button>
+        <button class="btn small" data-act="restorePicked" ${n ? '' : 'disabled'}>Restore</button>
+        <button class="btn small danger" data-act="purgePicked" ${n ? '' : 'disabled'}>Delete forever</button></div>`; })}
+      <div class="card flat list">${list.map(i => `<div class="row-i bin-row ${p.sel === i.id ? 'sel' : ''}"><input type="checkbox" class="big-check" data-ch="binPick" data-id="${i.id}" ${ticked.has(i.id) ? 'checked' : ''} aria-label="Tick ${esc(i.name)}">
+        <button class="grow bin-open" data-act="openItem" data-id="${i.id}"><span class="t">${esc(i.name)}</span><span class="s"><span class="num">${esc(i.number || '')}</span>${i.updated_at ? ' · deleted ' + fmtD(i.updated_at) : ''}</span></button></div>`).join('')}</div>`;
+  }
   if (!list.length) return `<div class="empty card flat">${V().itemList.length ? 'Nothing matches.' : 'The catalogue is empty.' + (isManager() ? ' Add the first item with New item.' : '')}</div>`;
   const picked = new Set(p.picked || []);
   const shown = list.slice(0, 400);
@@ -642,7 +737,7 @@ function itemDetail(i) {
   const photos = [...((S.snap.photos || {})[i.id] || []), ...S.outbox.filter(o => o.op === 'photo_add' && o.data.item_id === i.id).map(o => o.data.id)];
   const fields = [...v.fields.values()].filter(f => !f.archived && i.custom && i.custom[f.id] !== undefined && i.custom[f.id] !== '');
   const indiv = i.kind === 'equipment' && !i.counted;
-  return `<div class="item-head"><span class="num">${esc(i.number || 'new')}</span><h2>${esc(i.name)}</h2>
+  return `${i.archived && !isPurged(i) ? '<div class="msg warn small">In the Recycle bin</div>' : ''}<div class="item-head"><span class="num">${esc(i.number || 'new')}</span><h2>${esc(i.name)}</h2>
       ${stockState(i) !== 'ok' ? `<span class="pill ${stockState(i) === 'low' ? 'warn' : stockState(i) === 'bad' ? 'bad' : ''}">${esc(stockWord(i))}</span>` : ''}</div>
     ${photos.length ? `<div class="photos">${photos.map(id => `<img data-photo="${id}" alt="">`).join('')}</div>` : ''}
     <div class="mini-stats"><div><span>${indiv ? 'Status' : 'On shelf'}</span><b>${indiv ? esc(onShelf(i)) : fmtQty(i.qty)}</b></div>
@@ -657,12 +752,17 @@ function itemDetail(i) {
 }
 function itemActions(i) {
   if (!isManager()) return '';
+  if (isPurged(i)) return '';
+  if (i.archived) return `<button class="btn primary" data-act="restoreItem" data-id="${i.id}">Restore</button>
+    <button class="btn" data-act="history" data-id="${i.id}">History</button>
+    <button class="btn danger" data-act="purgeItem" data-id="${i.id}">Delete forever</button>`;
   return `<button class="btn primary" data-act="editItem" data-id="${i.id}">Edit</button>
     <button class="btn" data-act="adjustOne" data-id="${i.id}">Adjust count</button>
     <button class="btn" data-act="history" data-id="${i.id}">History</button>
     ${i.number ? `<button class="btn" data-act="printOne" data-id="${i.id}">Print label</button>` : ''}
     <label class="btn">Add photo<input type="file" accept="image/*" capture="environment" data-ch="addPhoto" data-id="${i.id}" hidden></label>
-    ${i.kind === 'equipment' && !i.counted ? `<button class="btn" data-act="eqStatus" data-id="${i.id}">Set status</button>` : ''}`;
+    ${i.kind === 'equipment' && !i.counted ? `<button class="btn" data-act="eqStatus" data-id="${i.id}">Set status</button>` : ''}
+    <button class="btn danger" data-act="binItem" data-id="${i.id}">Delete</button>`;
 }
 MODALS.item = () => {
   const i = item(S.modal.id); if (!i) return modal('Item', 'Not found');
@@ -687,7 +787,7 @@ MODALS.eqStatus = () => {
 ACT.setEq = async d => { await queue('equipment_status', { item_id: S.modal.id, status: d.s }); closeModal(); toast('Status saved'); render(); };
 
 // Item editor (Managers)
-ACT.newItem = () => openModal('editItem', { draft: { id: uuid(), kind: 'consumable', name: '', description: '', location_id: '', tags: [], custom: {}, low_stock: '', counted: false }, isNew: true });
+ACT.newItem = (o = {}) => openModal('editItem', { draft: { id: uuid(), kind: 'consumable', name: o.name || '', description: '', location_id: '', tags: [], custom: {}, low_stock: '', counted: false }, isNew: true, onSaved: o.onSaved });
 ACT.editItem = d => { const i = item(d.id); openModal('editItem', { draft: JSON.parse(JSON.stringify({ ...i, low_stock: i.low_stock ?? '' })), isNew: false }); };
 MODALS.editItem = () => {
   const m = S.modal; const x = m.draft; const fields = [...V().fields.values()].filter(f => !f.archived).sort((a, b) => a.sort - b.sort);
@@ -704,7 +804,7 @@ MODALS.editItem = () => {
     <label class="f">Tags (comma between)<input type="text" value="${esc((x.tags || []).join(', '))}" data-in="draftTags"></label>
     <label class="f">Notes<textarea data-in="draft" data-f="description" rows="2">${esc(x.description)}</textarea></label>
     ${fields.map(f => fieldInput(f, x.custom[f.id])).join('')}
-    ${m.isNew ? `<p class="hint">After saving, use Adjust counts to enter how many are on the shelf.</p>` : `<label class="check"><input type="checkbox" data-ch="draft" data-f="archived" ${x.archived ? 'checked' : ''}> Archived (hidden, never deleted)</label>`}`,
+    ${m.isNew ? `<p class="hint">${m.onSaved ? 'After saving, it is added to your list.' : 'After saving, use Adjust counts to enter how many are on the shelf.'}</p>` : ''}`,
     `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="saveItem">Save</button>`);
 };
 function fieldInput(f, v) {
@@ -722,7 +822,10 @@ ACT.saveItem = async () => {
   const x = S.modal.draft; const isNew = S.modal.isNew; if (!x.name.trim()) return toast('Give it a name');
   const data = { id: x.id, kind: x.kind, name: x.name.trim(), description: x.description || '', location_id: x.location_id || null,
     tags: x.tags || [], custom: x.custom || {}, low_stock: x.low_stock === '' ? null : num(x.low_stock), counted: !!x.counted, archived: !!x.archived };
-  await queue('item_save', data); closeModal(); toast(isNew ? 'Item added. Use Adjust counts to enter how many there are.' : 'Saved', 3500);
+  const onSaved = S.modal.onSaved;
+  await queue('item_save', data); closeModal();
+  if (onSaved) { onSaved(x.id); toast('Added to the Catalogue and to your list'); return; }
+  toast(isNew ? 'Item added. Use Adjust counts to enter how many there are.' : 'Saved', 3500);
   if (S.screen === 'catalogue' && isDesk()) S.params.sel = x.id;
   render();
 };

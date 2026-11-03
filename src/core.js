@@ -259,17 +259,57 @@ async function checkPin(u, pin) {
   return (await pinHash(pin, u.salt, u.iter || PBKDF2_ITER)) === u.hash;
 }
 
-// ------------------------------------------------------------------ idle sign-out
-let lastTap = Date.now(); let idleWarned = false;
-['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTap = Date.now(); if (idleWarned) { idleWarned = false; toast('Still signed in'); } }, true));
+// ------------------------------------------------------------------ idle sign-out, and staying signed in across a refresh
+// The signed-in person and the time of their last tap are kept on the device, so reloading the page or reopening
+// the app within the idle limit carries on where they were. After the limit, or Sign out, the next person needs a PIN.
+let lastTap = Date.now(); let idleWarned = false; let sessionSaved = 0;
+const idleLimit = () => num(setting('idle_minutes', 10)) * 60000;
+function saveSession(force) {
+  if (!S.user || (!force && Date.now() - sessionSaved < 10000)) return;
+  sessionSaved = Date.now();
+  DB.put('kv', { user_id: S.user.id, last_tap: lastTap, screen: S.screen }, 'session').catch(() => { });
+}
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTap = Date.now(); saveSession(); if (idleWarned) { idleWarned = false; toast('Still signed in'); } }, true));
+
+// Each person's Cart is kept on the device until they save it or discard it, through sign-outs and refreshes.
+let cartSaved = 'null';
+const cartKey = id => 'cart:' + id;
+function saveCartDraft() {
+  if (!S.user) return;
+  const { q, ...keep } = S.cart || {}; const json = S.cart && (S.cart.lines.length || S.cart.correction) ? JSON.stringify(keep) : 'null';
+  if (json === cartSaved) return; cartSaved = json;
+  (json === 'null' ? DB.del('kv', cartKey(S.user.id)) : DB.put('kv', JSON.parse(json), cartKey(S.user.id))).catch(() => { });
+}
+async function loadCartDraft(id) {
+  let c = null; try { c = await DB.get('kv', cartKey(id)); } catch { }
+  S.cart = c ? { ...c, q: '' } : null; cartSaved = c ? JSON.stringify(c) : 'null';
+}
+setInterval(saveCartDraft, 1500);
+const flushDrafts = () => { saveCartDraft(); saveSession(true); };
+window.addEventListener('pagehide', flushDrafts);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushDrafts(); });
+async function startSession(u, screen = 'home') {
+  S.user = u; lastTap = Date.now(); await loadCartDraft(u.id); saveSession(true);
+  go(screen);
+}
+async function resumeSession() {
+  let s = null; try { s = await DB.get('kv', 'session'); } catch { }
+  const u = s && S.snap && (S.snap.users || []).find(x => x.id === s.user_id);
+  if (!u || !u.hash || Date.now() - num(s.last_tap) > idleLimit()) { if (s) DB.del('kv', 'session').catch(() => { }); return false; }
+  S.user = u; await loadCartDraft(u.id); lastTap = num(s.last_tap);
+  const back = ['home', 'cart', 'catalogue', 'entries', 'more', 'alerts', 'reports', 'picks', 'counts', 'pos', 'receive', 'adjust', 'supplierReturn', 'people', 'setup2', 'status', 'bin'];
+  go(s.screen === 'review' ? 'cart' : back.includes(s.screen) && (isManager() || ['home', 'cart', 'catalogue', 'entries', 'more', 'picks', 'counts'].includes(s.screen)) ? s.screen : 'home');
+  return true;
+}
 setInterval(() => {
   if (!S.user) return;
-  const limit = num(setting('idle_minutes', 10)) * 60000; const idle = Date.now() - lastTap;
+  const limit = idleLimit(); const idle = Date.now() - lastTap;
   if (idle > limit) signOut(`Signed out after ${setting('idle_minutes', 10)} minutes without a tap.`);
   else if (idle > limit - 30000 && !idleWarned) { idleWarned = true; toast('Signing out in 30 seconds. Tap anywhere to stay.', 30000); }
 }, 5000);
 function signOut(msg) {
-  S.user = null; S.cart = null; S.modal = null; idleWarned = false;
+  saveCartDraft(); DB.del('kv', 'session').catch(() => { });
+  S.user = null; S.cart = null; S.modal = null; idleWarned = false; cartSaved = 'null';
   go('signin'); if (msg) toast(msg, 5000);
 }
 
@@ -280,7 +320,7 @@ function region(id, fn) { regions[id] = fn; return `<div id="${id}">${fn()}</div
 function refresh(...ids) { for (const id of ids) { const el = document.getElementById(id); if (el && regions[id]) el.innerHTML = regions[id](); } }
 
 function go(screen, params = {}) {
-  S.screen = screen; S.params = params; S.modal = null;
+  S.screen = screen; S.params = params; S.modal = null; saveSession(true);
   if (history.state?.screen !== screen) history.pushState({ screen }, '');
   render(); window.scrollTo(0, 0);
 }
@@ -531,7 +571,7 @@ async function boot() {
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
   history.replaceState({ screen: 'boot' }, '');
   if (!S.key) { go('setup'); return; }
-  go(S.snap ? 'signin' : 'setup');
+  if (!S.snap) go('setup'); else if (!(await resumeSession())) go('signin');
   startSyncLoop(); sync({ full: !S.jobs.list.length });
 }
 document.addEventListener('DOMContentLoaded', boot);

@@ -28,7 +28,7 @@ export function createMock() {
       let it = item(d.id);
       if (!it) { const e = d.kind === 'equipment'; const n = ++db.seq[e ? 'e' : 'c']; it = { id: d.id, number: (e ? 'E-' : 'C-') + String(n).padStart(4, '0'), qty: e && !d.counted ? 1 : 0, status: 'available', created_at: now() }; db.items.push(it); }
       Object.assign(it, { kind: it.kind || d.kind, counted: it.counted ?? !!d.counted, name: d.name, description: d.description || '', location_id: d.location_id || null,
-        tags: d.tags || [], custom: d.custom || {}, low_stock: d.low_stock, archived: !!d.archived, updated_at: now() });
+        tags: d.tags || [], custom: d.custom || {}, low_stock: d.low_stock, archived: !!d.archived || !!d.purged, purged_at: it.purged_at || (d.purged ? now() : null), updated_at: now() });
       return { number: it.number };
     }
     if (['cart', 'received', 'adjustment', 'supplier_return'].includes(p.op)) {

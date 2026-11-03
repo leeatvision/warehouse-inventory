@@ -170,6 +170,42 @@ try {
     await tap(page, '.side [data-to=catalogue]'); await page.waitForTimeout(300); await tap(page, '#catList .row-i'); await settle(page); await shot(page, '24-item');
     await tap(page, '[data-act=close]'); await tap(page, '[data-act=labelMode]'); await tap(page, '[data-act=labelAll]'); await shot(page, '25-labels');
   });
+  await step('refresh keeps you signed in and keeps your Cart', async () => {
+    await nav(page, 'home'); await tap(page, '.hero'); await page.fill('[data-in=cartQ]', 'emt'); await settle(page); await tap(page, '#finder [data-act=addItem]'); await settle(page);
+    await page.waitForTimeout(1800); await page.reload(); await page.waitForSelector('.screen-cart', { timeout: 15000 });
+    if (await page.locator('.cart-panel .line, .cart-panel [data-lid]').count() < 1) throw new Error('Cart lost on refresh');
+    await shot(page, '24a-cart-after-refresh');
+    await tap(page, '[data-act=discardCart]'); await page.waitForSelector('.home');
+    await page.waitForTimeout(1800); await page.reload(); await page.waitForSelector('.home', { timeout: 15000 });
+    if (await page.evaluate(() => !!(S.cart && S.cart.lines.length))) throw new Error('discarded Cart came back');
+  });
+  await step('new catalogue item from Receive items', async () => {
+    await nav(page, 'receive'); await tap(page, '[data-act=edAdd]'); await page.fill('[data-in=ipQ]', 'Test widget'); await settle(page);
+    await tap(page, '[data-act=ipNew]'); await settle(page);
+    if (await page.inputValue('[data-in=draft][data-f=name]') !== 'Test widget') throw new Error('name not carried over');
+    await tap(page, '[data-act=saveItem]'); await settle(page); await shot(page, '24b-receive-new-item');
+    if (!(await page.locator('.line').first().innerText()).includes('Test widget')) throw new Error('new item not on the list');
+    await page.locator('[data-in=edQty]').fill('4'); await tap(page, '[data-act=saveLe][data-key=receive]'); await page.waitForSelector('.home'); await page.waitForTimeout(800);
+    if (!mock.db.items.some(i => i.name === 'Test widget' && i.qty === 4)) throw new Error('new item not received');
+  });
+  await step('adjust shows the change', async () => {
+    await page.evaluate(() => { S.le = {}; }); await nav(page, 'adjust'); await tap(page, '[data-act=edAdd]'); await page.fill('[data-in=ipQ]', 'Test widget'); await settle(page); await tap(page, '#ipRes .row-i');
+    await page.locator('[data-in=edQty]').fill('6'); const t = await page.locator('#chg-0').innerText(); if (t !== 'Change +2') throw new Error('change shown as ' + t);
+    await tap(page, '[data-act=saveLe][data-key=adjust]'); await page.waitForSelector('.home'); await page.waitForTimeout(800);
+    const led = mock.db.ledger.filter(l => l.kind === 'adjust').pop(); if (!led || led.delta !== 2) throw new Error('adjust delta ' + (led && led.delta));
+  });
+  await step('recycle bin with PIN for delete forever', async () => {
+    await nav(page, 'catalogue'); await page.fill('[data-in=catQ]', 'Test widget'); await settle(page); await tap(page, '#catList [data-act=openItem]'); await settle(page);
+    await tap(page, '[data-act=binItem]'); await page.waitForTimeout(800);
+    if (!mock.db.items.find(i => i.name === 'Test widget').archived) throw new Error('not moved to the bin');
+    await page.fill('[data-in=catQ]', ''); await tap(page, '[data-act=catChip][data-k=archived]'); await settle(page); await shot(page, '24c-recycle-bin');
+    await page.locator('[data-ch=binPick]').first().check(); await settle(page); await tap(page, '[data-act=purgePicked]'); await settle(page);
+    await page.waitForSelector('.modal.pin'); await shot(page, '24d-pin-confirm'); await pin(page, '1111'); await page.waitForTimeout(300);
+    if (mock.db.items.find(i => i.name === 'Test widget').purged_at) throw new Error('wrong PIN accepted');
+    await page.locator('.pinpad button[data-k=clear]').click(); await pin(page, '2468'); await page.waitForTimeout(1000);
+    if (!mock.db.items.find(i => i.name === 'Test widget').purged_at) throw new Error('not deleted forever');
+    if (await page.locator('[data-ch=binPick]').count()) throw new Error('purged item still in the bin');
+  });
   await step('offline entries queue and send later', async () => {
     await nav(page, 'home');
     await page.context().setOffline(true); page.context().offlineFlag = true;
@@ -204,6 +240,7 @@ try {
     if (await page.locator('[data-act=homeScope]').count()) throw new Error('worker sees everyone\'s entries');
     await nav(page, 'more'); await settle(page);
     if (await page.locator('[data-to=receive]').count()) throw new Error('worker sees Manager tools');
+    await nav(page, 'catalogue'); if (await page.locator('[data-k=archived]').count()) throw new Error('worker sees the Recycle bin');
   });
   const phone = await newPage(P, { touch: true }); cur = phone;
   await step('phone screens', async () => {
@@ -234,6 +271,8 @@ try {
     await tap(desk, '.side [data-to=catalogue]'); await settle(desk); await tap(desk, '#catList tr.click'); await settle(desk); await shot(desk, '41-desk-catalogue');
     await tap(desk, '.side [data-to=reports]'); await tap(desk, '[data-act=runReport]'); await desk.waitForSelector('#rpOut table'); await shot(desk, '42-desk-reports');
     await tap(desk, '.side [data-to=cart]'); await settle(desk); await shot(desk, '43-desk-cart');
+    await desk.setViewportSize({ width: 1920, height: 1080 }); await nav(desk, 'home'); await settle(desk); await shot(desk, '44-desk-home-1920');
+    await nav(desk, 'catalogue'); await settle(desk); await shot(desk, '45-desk-catalogue-1920');
   });
   const dark = await newPage(T, { dark: true }); cur = dark;
   await step('dark mode', async () => { await connect(dark); await signIn(dark, 'Alex Manager', '2468'); await shot(dark, '50-dark-home'); });
