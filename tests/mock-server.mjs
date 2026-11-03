@@ -12,8 +12,8 @@ export function createMock() {
     ledger: [], activity: [], ops: new Map(), docs: [], seq: { c: 0, e: 0, cart: 0, po: 0, line: 0 },
   };
   const jobs = [
-    [100, 'Acme Builders', 'Acme Builders', null, true], [101, 'Main St Remodel', 'Acme Builders:Main St Remodel', 100, false],
-    [102, 'Oak Ave Addition', 'Acme Builders:Oak Ave Addition', 100, false], [200, 'Smith Residence', 'Smith Residence', null, false],
+    [100, 'Acme Builders', 'Acme Builders', null, true], [101, 'Main St Remodel', 'Acme Builders:Main St Remodel', 100, false, '12 Main St, Springfield, ST 00001'],
+    [102, 'Oak Ave Addition', 'Acme Builders:Oak Ave Addition', 100, false], [200, 'Smith Residence', 'Smith Residence', null, false, '400 Elm Rd, Shelbyville, ST 00002'],
     [300, 'Service Calls', 'Service Calls', null, false],
   ];
   const item = id => db.items.find(i => i.id === id);

@@ -43,15 +43,24 @@ ACT.ipPick = d => S.modal.onPick(d.id);
 ACT.ipEnter = () => { const it = itemByCode(S.modal.q); if (it) S.modal.onPick(it.id); };
 
 // ------------------------------------------------------------------ receive, adjust, supplier return
+const RCV_SOURCES = { supplier: 'Supplier delivery', back: 'Brought back, no Job code', other: 'Other' };
 SCREENS.receive = () => {
-  S.le = S.le || {}; const ed = S.le.receive || (S.le.receive = { lines: [], note: '', po_id: null });
+  S.le = S.le || {}; const ed = S.le.receive || (S.le.receive = { lines: [], note: '', po_id: null, source: 'supplier', reason: '' });
   const pos = V().pos.filter(p => p.status === 'open' || p.status === 'partial');
-  return `<div class="head">${back('More', 'more')}<h1>Receive delivery</h1></div><div class="stack">
-    <div class="panel pad grid2"><label class="f">Purchase order<select data-ch="rcvPo"><option value="">No PO</option>${pos.map(p => `<option value="${p.id}" ${ed.po_id === p.id ? 'selected' : ''}>PO ${p.number} · ${esc(p.supplier)}</option>`).join('')}</select></label>
-      <label class="f">Note (e.g. packing slip number)<input type="text" value="${esc(ed.note)}" data-in="leNote" data-key="receive"></label></div>
+  const src = ed.source || 'supplier';
+  const extra = src === 'supplier'
+    ? `<label class="f">Purchase order (optional)<select data-ch="rcvPo"><option value="">No PO</option>${pos.map(p => `<option value="${p.id}" ${ed.po_id === p.id ? 'selected' : ''}>PO ${p.number} · ${esc(p.supplier)}</option>`).join('')}</select></label>`
+    : src === 'other' ? `<label class="f">Reason<input type="text" value="${esc(ed.reason)}" data-in="rcvReason" placeholder="Where it came from"></label>` : '';
+  return `<div class="head">${back('More', 'more')}<h1>Receive items</h1></div><div class="stack">
+    <p class="muted">Anything coming into the warehouse. Parts coming back from a Job code are a Return in a Cart, so the job is credited.</p>
+    <div class="panel pad grid2"><label class="f">What's coming in<select data-ch="rcvSrc">${Object.entries(RCV_SOURCES).map(([k, v]) => `<option value="${k}" ${src === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      ${extra}
+      <label class="f">Note${src === 'supplier' ? ' (e.g. packing slip number)' : ' (optional)'}<input type="text" value="${esc(ed.note)}" data-in="leNote" data-key="receive"></label></div>
     ${lineEditor('receive', { qtyLabel: 'Received', note: true })}
     <div class="row"><span class="grow"></span><button class="btn primary" data-act="saveLe" data-key="receive">Add to Stock</button></div></div>`;
 };
+CH.rcvSrc = v => { const ed = S.le.receive; ed.source = v; if (v !== 'supplier') ed.po_id = null; render(); };
+IN.rcvReason = v => { S.le.receive.reason = v; };
 CH.rcvPo = v => {
   const ed = S.le.receive; ed.po_id = v || null;
   const po = V().pos.find(p => p.id === v);
@@ -72,8 +81,12 @@ ACT.saveLe = async d => {
   const ed = S.le[d.key]; const lines = ed.lines.filter(l => l.qty !== '' && (d.key === 'adjust' ? num(l.qty) >= 0 : num(l.qty) > 0));
   if (!lines.length) return toast('Nothing to save');
   if (d.key === 'supplierReturn' && lines.some(l => !l.jobcode_id)) return toast('Every line needs a Job code');
+  if (d.key === 'receive' && ed.source === 'other' && !String(ed.reason || '').trim()) return toast('Say where the items came from');
   const op = { receive: 'received', adjust: 'adjustment', supplierReturn: 'supplier_return' }[d.key];
-  await queue(op, { po_id: ed.po_id || undefined, note: ed.note || '', count_id: ed.count_id || undefined,
+  let note = ed.note || '';
+  if (d.key === 'receive' && ed.source && ed.source !== 'supplier')
+    note = [ed.source === 'back' ? RCV_SOURCES.back : 'Other: ' + String(ed.reason).trim(), note].filter(Boolean).join(' · ');
+  await queue(op, { po_id: ed.po_id || undefined, note, source: d.key === 'receive' ? ed.source : undefined, count_id: ed.count_id || undefined,
     lines: lines.map(l => ({ item_id: l.item_id, qty: num(l.qty), jobcode_id: l.jobcode_id || undefined, note: l.note || '', reason: d.key === 'adjust' ? l.reason : undefined })) });
   delete S.le[d.key]; go('home'); toast('Saved');
 };

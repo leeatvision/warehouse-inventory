@@ -142,8 +142,8 @@ async function loadJobs() {
   await DB.put('kv', j, 'jobs'); setJobs(j); S.jobs.fetched = Date.now(); await DB.put('kv', S.jobs.fetched, 'jobs_fetched');
 }
 function setJobs(j) {
-  const list = (j.jobs || []).map(a => ({ id: a[0], name: a[1], full: a[2] || a[1], parent: a[3], parentOnly: !!a[4] }));
-  list.forEach(x => { x.n = norm(x.full); });
+  const list = (j.jobs || []).map(a => ({ id: a[0], name: a[1], full: a[2] || a[1], parent: a[3], parentOnly: !!a[4], addr: a[5] || '' }));
+  list.forEach(x => { x.n = norm(x.full + ' ' + x.addr); });
   S.jobs.list = list; S.jobs.byId = new Map(list.map(x => [x.id, x])); S.jobs.synced_at = j.synced_at;
 }
 function startSyncLoop() {
@@ -229,6 +229,7 @@ function V() {
 const item = id => V().items.get(id);
 const userName = id => { if (!id) return ''; const u = V().users.get(Number(id)); return u ? u.name : 'User ' + id; };
 const jobOf = id => S.jobs.byId.get(Number(id));
+const jobAddr = id => { const j = jobOf(id); return j ? j.addr : ''; };
 const jobLabel = id => { const j = jobOf(id); return j ? j.full : (id ? 'Job code ' + id : ''); };
 function locPath(id) {
   const L = V().locations; const parts = []; let cur = L.get(id); let guard = 0;
@@ -306,6 +307,7 @@ const ICON_PATHS = {
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
   swap: '<path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/>',
+  pin: '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
   tool: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
 };
 const icon = (name, size = 24, extra = '') => `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${ICON_PATHS[name] || ''}</svg>`;
@@ -316,7 +318,7 @@ const isDesk = () => matchMedia('(min-width: 1400px)').matches;
 // ------------------------------------------------------------------ the frame: side menu (tablet, desktop), bottom bar and header (phone)
 const NAV_MAIN = [['home', 'Home', 'home'], ['cart', 'Cart', 'cart'], ['catalogue', 'Catalogue', 'box'], ['entries', 'Entries', 'list'], ['more', 'More', 'menu']];
 const NAV_GROUPS = [
-  ['Stock', [['receive', 'Receive delivery'], ['adjust', 'Adjust counts'], ['counts', 'Stock counts']]],
+  ['Stock', [['receive', 'Receive items'], ['adjust', 'Adjust counts'], ['counts', 'Stock counts']]],
   ['Jobs and orders', [['picks', 'Pick lists'], ['pos', 'Purchase orders'], ['supplierReturn', 'Supplier returns']]],
   ['Office', [['alerts', 'Alerts'], ['reports', 'Reports'], ['people', 'People and PINs'], ['setup2', 'Locations and fields'], ['status', 'Device and billing']]],
 ];

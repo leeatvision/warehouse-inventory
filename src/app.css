@@ -433,3 +433,8 @@ table.t td { min-width: 64px; }
 .see-all { align-self: flex-start; min-height: 40px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 600; padding: 0 2px; }
 .tag { white-space: nowrap; }
 .home-wide { margin-top: 28px; }
+
+/* Job site address under a Job code */
+.row-i .s.addr { display: flex; align-items: center; gap: 4px; }
+.row-i .s.addr svg { flex: none; opacity: .7; }
+.job-card .addr, .card-h .addr { display: block; font-size: 13px; font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }

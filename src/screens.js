@@ -221,7 +221,7 @@ SCREENS.more = () => {
   const row = (to, label, sub, count = '') => `<button class="row-i" data-act="go" data-to="${to}"><span class="grow"><span class="t">${label}</span><span class="s">${sub}</span></span>
     ${count ? `<span class="count">${count}</span>` : ''}${icon('chevron', 18, 'class="ico chev"')}</button>`;
   const alerts = isManager() ? alertList() : [];
-  const sub = { receive: 'Add a supplier delivery', adjust: 'Fix a count, with a reason', counts: 'Start and review counts', picks: 'Prepare items for a job',
+  const sub = { receive: 'Deliveries and parts brought back', adjust: 'Fix a count, with a reason', counts: 'Start and review counts', picks: 'Prepare items for a job',
     pos: 'Make, print and receive', supplierReturn: 'Job material going back', alerts: 'Low stock, overdue, delivery', reports: 'History, stock, moves',
     people: `${V().users.size} people`, setup2: 'Shelves, bins, custom fields', status: 'Sending, billing PDFs, settings' };
   return `${pageHead('More')}<div class="stack-l">
@@ -279,7 +279,7 @@ SCREENS.cart = () => {
 function jobCard() {
   const c = S.cart; if (c.mode === 'equipment' && !c.lines.some(l => l.kind === 'checkout')) return '';
   return `<button class="job-card ${c.jobAll ? '' : 'empty-job'}" data-act="jobAll"><span class="grow"><span class="lbl">Job code</span>
-    <b>${c.jobAll ? esc(jobLabel(c.jobAll)) : 'Choose the Job code'}</b></span><span class="act">${c.jobAll ? 'Change' : 'Choose'}</span></button>`;
+    <b>${c.jobAll ? esc(jobLabel(c.jobAll)) : 'Choose the Job code'}</b>${c.jobAll && jobAddr(c.jobAll) ? `<span class="addr">${esc(jobAddr(c.jobAll))}</span>` : ''}</span><span class="act">${c.jobAll ? 'Change' : 'Choose'}</span></button>`;
 }
 function saveBar() {
   const n = S.cart.lines.length;
@@ -412,7 +412,7 @@ ACT.pickJob = d => openModal('job', { target: d.lid });
 // Job code picker
 MODALS.job = () => {
   const m = S.modal;
-  return modal('Choose a Job code', `<label class="field-search">${icon('search', 20)}<input type="search" placeholder="Customer or job name" aria-label="Search Job codes" value="${esc(m.q || '')}" data-in="jobQ" data-autofocus autocomplete="off"></label>
+  return modal('Choose a Job code', `<label class="field-search">${icon('search', 20)}<input type="search" placeholder="Customer, job or address" aria-label="Search Job codes" value="${esc(m.q || '')}" data-in="jobQ" data-autofocus autocomplete="off"></label>
     ${jobsStale() ? `<div class="msg warn small">The Job code list was last updated ${ago(S.jobs.synced_at)}. A new job may be missing.</div>` : ''}
     ${region('jobRes', jobResHtml)}`);
 };
@@ -430,7 +430,8 @@ function jobResHtml() {
 function jobLi(j) {
   const parts = j.full.split(/\s*:\s*|\s*=>\s*/);
   return `<button class="row-i" data-act="setJob" data-id="${j.id}"><span class="grow"><span class="t">${esc(parts[parts.length - 1])}</span>
-    ${parts.length > 1 ? `<span class="s">${esc(parts.slice(0, -1).join(' › '))}</span>` : ''}</span></button>`;
+    ${parts.length > 1 ? `<span class="s">${esc(parts.slice(0, -1).join(' › '))}</span>` : ''}
+    ${j.addr ? `<span class="s addr">${icon('pin', 14)}${esc(j.addr)}</span>` : ''}</span></button>`;
 }
 IN.jobQ = v => { S.modal.q = v; refresh('jobRes'); };
 const _openModal = openModal;
@@ -462,7 +463,7 @@ SCREENS.review = () => {
   const verbs = [...new Set(c.lines.map(l => MODES[l.kind]))].join(', ');
   return `<div class="review">${pageHead(c.correction ? `Check your Correction to Cart ${c.correction.cart_id}` : 'Check and save', '', 'cart', 'Cart')}
     <p class="lead">${esc(verbs)} by <b>${esc(S.user.name)}</b>${c.obo ? ` for <b>${esc(userName(c.obo))}</b>` : ''}. Each Job code gets its own billing document.</p>
-    ${[...groups.entries()].map(([job, ls]) => `<section class="card flat"><h2 class="card-h">${job ? esc(jobLabel(job)) : 'Equipment coming back'}</h2>
+    ${[...groups.entries()].map(([job, ls]) => `<section class="card flat"><h2 class="card-h">${job ? esc(jobLabel(job)) : 'Equipment coming back'}${job && jobAddr(job) ? `<span class="addr">${esc(jobAddr(job))}</span>` : ''}</h2>
       ${ls.map(l => { const it = item(l.item_id) || {}; return `<div class="rv-row"><span class="grow">${l.kind !== 'take' ? `<span class="tag ${l.kind}">${MODES[l.kind]}</span> ` : ''}<span class="t">${esc(it.name)}</span>
         <span class="s"><span class="num">${esc(it.number || '')}</span></span>${l.note ? `<span class="s note">${esc(l.note)}</span>` : ''}</span><b class="rv-q">${fmtQty(l.qty)}</b></div>`; }).join('')}</section>`).join('')}
     ${short.length ? `<div class="msg warn">More than the app thinks is on the shelf: ${short.map(l => esc(item(l.item_id).name)).join(', ')}. It will be saved and Managers will be asked to recount.</div>` : ''}

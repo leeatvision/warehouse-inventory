@@ -133,6 +133,17 @@ try {
     await tap(page, '[data-act=savePo]'); await page.waitForTimeout(800); await shot(page, '15-pos');
     await nav(page, 'receive'); await page.selectOption('[data-ch=rcvPo]', { index: 1 }); await settle(page);
     await page.locator('[data-in=edQty]').fill('60'); await shot(page, '16-receive'); await tap(page, '[data-act=saveLe][data-key=receive]'); await page.waitForSelector('.home');
+    await page.waitForTimeout(500); await nav(page, 'receive'); await page.selectOption('[data-ch=rcvSrc]', 'back'); await settle(page);
+    await tap(page, '[data-act=edAdd]'); await page.fill('[data-in=ipQ]', 'EMT'); await settle(page); await tap(page, '#ipRes .row-i'); await page.locator('[data-in=edQty]').fill('3');
+    await shot(page, '16b-receive-back'); await tap(page, '[data-act=saveLe][data-key=receive]'); await page.waitForSelector('.home'); await page.waitForTimeout(800);
+    if (!mock.db.carts.some(c => c.kind === 'received' && c.note.startsWith('Brought back'))) throw new Error('brought-back receive not saved with its reason');
+  });
+  await step('job address in picker', async () => {
+    await tap(page, '.hero'); await tap(page, '[data-act=jobAll]'); await page.fill('[data-in=jobQ]', 'elm rd'); await settle(page);
+    const t = await page.locator('#jobRes .row-i').first().innerText(); if (!t.includes('400 Elm Rd')) throw new Error('address not shown in picker: ' + t);
+    await shot(page, '16c-job-address'); await tap(page, '#jobRes .row-i'); await settle(page);
+    if (!(await page.locator('.job-card .addr').innerText()).includes('Elm Rd')) throw new Error('address not on job card');
+    await nav(page, 'home');
   });
   await step('pick list', async () => {
     await page.waitForTimeout(500); await nav(page, 'picks'); await tap(page, '[data-act=editPick]'); await page.fill('[data-in=pkF]', 'Oak Ave trim-out');
