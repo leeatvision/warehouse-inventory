@@ -190,7 +190,7 @@ function deskHome({ card, mineOut, openPicks, myCounts, alerts }) {
     <div class="card flat list">${rows || `<div class="empty">${emptyText}</div>`}
     ${to && total > 6 ? `<button class="row-i" data-act="go" data-to="${to}"><span class="grow t">See all ${total}</span>${icon('chevron', 18, 'class="ico chev"')}</button>` : ''}</div></section>`;
   return `<div class="home desk-home">
-    <div class="dh-top"><div class="head-big"><p class="muted">${esc(todayLabel())}</p><h1>${greeting()}</h1></div>${deskStats()}</div>
+    <div class="head-big"><p class="muted">${esc(todayLabel())}</p><h1>${greeting()}</h1></div>
     <div class="dh-grid">
       <div class="stack-l">
         <div class="dh-start">
@@ -207,6 +207,7 @@ function deskHome({ card, mineOut, openPicks, myCounts, alerts }) {
         ${entriesWidget()}
       </div>
       <div class="stack-l dh-side">
+        ${deskStats()}
         ${side('Needs a look', 'alerts', alerts.slice(0, 6).map(alertRow).join(''), 'Nothing needs a look.', alerts.length)}
         ${side('Equipment out', 'catalogue?stock=out', outs.slice(0, 6).map(c => { const it = item(c.item_id) || {}; return `<button class="row-i" data-act="openItem" data-id="${c.item_id}"><span class="grow"><span class="t">${esc(it.name || '')}</span>
           <span class="s">${esc(userName(c.user_id))} · since ${fmtD(c.opened_at)}${c.jobcode_id ? ' · ' + esc(jobLabel(c.jobcode_id)) : ''}</span></span>${it.counted ? `<b>${fmtQty(num(c.qty) - num(c.qty_returned))}</b>` : ''}</button>`; }).join(''), 'Nothing checked out.', outs.length)}
