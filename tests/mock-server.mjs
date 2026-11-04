@@ -17,6 +17,11 @@ export function createMock() {
     [300, 'Service Calls', 'Service Calls', null, false],
   ];
   const item = id => db.items.find(i => i.id === id);
+  // Current Take out lines of Carts that were not cancelled, newest first (like wh__takeouts).
+  const takeouts = user => db.carts.filter(c => c.kind === 'cart' && (!user || (c.on_behalf_of || c.entered_by) === user) && !db.carts.some(k => k.correction_of === c.id && k.cancelled))
+    .flatMap(c => state(c.id).filter(l => l.kind === 'take').map(l => ({ line_id: l.id, cart_id: c.id, item_id: l.item_id, qty: l.qty, jobcode_id: l.jobcode_id, note: l.note || '',
+      user_id: c.on_behalf_of || c.entered_by, at: c.received_at })))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)) || b.line_id - a.line_id);
   const state = root => { const k = db.carts.filter(c => c.correction_of === root).sort((a, b) => b.correction_seq - a.correction_seq)[0];
     return db.lines.filter(l => l.cart_id === (k ? k.id : root) && ['take', 'return'].includes(l.kind)); };
   const move = (id, d, kind, cart, u, job) => { const it = item(id); it.qty += d; db.ledger.push({ at: now(), cart_id: cart, item_id: id, delta: d, qty_after: it.qty, kind, user_id: u, jobcode_id: job }); };
@@ -79,8 +84,7 @@ export function createMock() {
     }).reverse();
     return { server_time: now(), settings: db.settings, users: db.users, items: db.items, photos: db.photos, locations: db.locations, fields: db.fields,
       checkouts: db.checkouts.filter(c => !c.closed_at), carts,
-      returnable: db.lines.filter(l => l.kind === 'take' && db.carts.find(c => c.id === l.cart_id).kind === 'cart').map(l => { const c = db.carts.find(x => x.id === l.cart_id);
-        return { line_id: l.id, cart_id: l.cart_id, item_id: l.item_id, qty: l.qty, jobcode_id: l.jobcode_id, user_id: c.on_behalf_of || c.entered_by, at: c.received_at }; }),
+      returnable: Object.values(takeouts().reduce((m, t) => { (m[t.user_id] = m[t.user_id] || []).push(t); return m; }, {})).flatMap(a => a.slice(0, 14)),
       picks: db.picks, pos: db.pos, counts: db.counts, reports: db.reports,
       delivery: { waiting: db.docs.filter(x => x.revision > x.delivered).length, oldest_waiting: null, last_delivered: null, last_error: null } };
   }
@@ -97,6 +101,11 @@ export function createMock() {
         let r; try { r = { ok: true, ...apply(p) }; } catch (e) { r = { ok: false, error: e.message }; }
         db.ops.set(p.client_id, r); return { client_id: p.client_id, ...r };
       })];
+      if (fn === 'wh_takeout_search') {
+        const words = String(args.p_q || '').toLowerCase().split(/\s+/).filter(Boolean);
+        return [200, takeouts(args.p_user).filter(t => { const it = item(t.item_id) || {}; const j = jobs.find(x => x[0] === t.jobcode_id);
+          const hay = [it.name, it.number, j ? j[2] : '', t.cart_id, t.note].join(' ').toLowerCase(); return words.every(w => hay.includes(w)); }).slice(0, args.p_limit || 50)];
+      }
       if (fn === 'wh_query') {
         const inRange = x => x >= args.p_from && x < args.p_to;
         if (args.p_kind === 'ledger') return [200, db.ledger.filter(l => inRange(l.at))];

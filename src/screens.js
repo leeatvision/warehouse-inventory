@@ -334,9 +334,9 @@ function saveBar() {
   const discard = !isWide() && (n || c.correction) ? `<button class="btn big discard-s" data-act="discardCart" aria-label="Discard this ${c.correction ? 'Correction' : 'Cart'}">${icon('x', 18)}<span>Discard</span></button>` : '';
   return `<div class="savebar ${discard ? 'with-discard' : ''}">${discard}<button class="btn big submit" data-act="review" ${n ? '' : 'disabled'}>${n ? `${isWide() ? 'Review and submit' : 'Submit'} · ${plural(n, 'item')}` : 'Add items to submit'}</button></div>`;
 }
-CH.obo = v => { S.cart.obo = v ? Number(v) : null; refresh('finder'); };
+CH.obo = v => { S.cart.obo = v ? Number(v) : null; searchReturns(); refresh('finder'); };
 ACT.mode = d => { S.cart.mode = d.m; S.cart.q = ''; render(); };
-IN.cartQ = v => { S.cart.q = v; refresh('finder'); if (!isWide()) refresh('cartLines'); fillPhotos(); };
+IN.cartQ = v => { S.cart.q = v; searchReturns(); refresh('finder'); if (!isWide()) refresh('cartLines'); fillPhotos(); };
 ACT.cartEnter = () => {
   const res = searchItems(S.cart.q, finderFilter());
   const it = itemByCode(S.cart.q) || (res.length === 1 ? res[0] : null);
@@ -358,24 +358,67 @@ function finderHtml() {
         return `<button class="row-i" data-act="addCheckin" data-id="${x.id}" ${inCart ? 'disabled' : ''}><span class="grow"><span class="t">${esc(it ? it.name : '?')}</span>
           <span class="s">${esc(userName(x.user_id))} · since ${fmtD(x.opened_at)} · ${esc(jobLabel(x.jobcode_id))}</span></span><span class="q">${inCart ? 'In Cart' : fmtQty(left)}</span></button>`; }).join('')}</div></section>`);
   }
-  if (c.mode === 'return' && !c.q) {
-    const who = c.obo || S.user.id; const seen = new Set();
-    const recent = (S.snap.returnable || []).filter(r => r.user_id === who).sort((a, b) => b.at.localeCompare(a.at))
-      .filter(r => { const k = r.item_id + ':' + r.jobcode_id; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, wide ? 12 : 6);
-    if (recent.length) parts.push(`<section class="sec"><h2 class="sec-h">Recently taken out by ${who === S.user.id ? 'you' : esc(userName(who))}</h2><div class="card flat list">
-      ${recent.map(r => { const it = item(r.item_id); return it ? `<button class="row-i" data-act="addReturn" data-item="${it.id}" data-job="${r.jobcode_id}" data-line="${r.line_id}">
-        <span class="grow"><span class="t">${esc(it.name)}</span><span class="s">${esc(jobLabel(r.jobcode_id))} · Cart ${r.cart_id}</span></span><span class="q">${fmtQty(r.qty)}</span></button>` : ''; }).join('')}</div></section>`);
-  }
+  if (c.mode === 'return') parts.push(returnHistoryHtml());
   // On a phone the results only show while searching; on wider screens the list is always there.
   if (c.q || wide || c.mode === 'equipment') {
     const res = searchItems(c.q, finderFilter(), wide ? 80 : 30);
-    const title = c.mode === 'equipment' ? 'Available to check out' : c.q ? 'Results' : 'All items';
-    parts.push(`<section class="sec">${wide || c.mode === 'equipment' ? `<h2 class="sec-h">${title}</h2>` : ''}${res.length
+    const title = c.mode === 'equipment' ? 'Available to check out' : c.mode === 'return' ? (c.q ? 'Catalogue items' : 'All items') : c.q ? 'Results' : 'All items';
+    if (c.mode === 'return' && c.q && !res.length) return parts.join('');
+    parts.push(`<section class="sec">${wide || c.mode === 'equipment' || c.mode === 'return' ? `<h2 class="sec-h">${title}</h2>` : ''}${res.length
       ? `<div class="${wide ? 'pick-grid' : 'card flat list'}">${res.map(i => wide ? pickCard(i) : itemRow(i, 'addItem')).join('')}</div>`
       : `<div class="empty card flat">${c.q ? 'No match.' : 'No items yet.'}${isManager() ? ' Add items in the Catalogue.' : ''}</div>`}</section>`);
   }
   return parts.join('');
 }
+// ---------------------------------------------------------------- Returns: what this person took out before
+// With no search: their 14 most recent Take outs (kept on the device). With a search: all their past Take outs,
+// searched on the server by item, Job code, Cart number or note (falls back to the 14 when offline).
+function returnWho() { return (S.cart && S.cart.obo) || S.user.id; }
+function returnHistoryHtml() {
+  const c = S.cart; const who = returnWho(); const whoName = who === S.user.id ? 'you' : esc(userName(who));
+  let list, title, status = '';
+  if (!c.q) {
+    list = (S.snap.returnable || []).filter(r => r.user_id === who).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 14);
+    title = `Last ${list.length || ''} taken out by ${whoName}`.replace('Last  ', 'Last ');
+  } else {
+    const r = retSearch.key === who + '|' + c.q ? retSearch : null;
+    list = r && r.res ? r.res : localReturnMatches(c.q, who);
+    title = `From ${who === S.user.id ? 'your' : whoName + "'s"} past Carts`;
+    status = !r || r.loading ? '<span class="s">Searching…</span>' : r.offline ? '<span class="s">Offline: recent Carts only</span>' : '';
+  }
+  if (!list.length && !c.q) return '';
+  const sort = c.rsort || 'new';
+  const seg = `<div class="seg small ret-sort" role="tablist" aria-label="Sort"><button class="${sort === 'new' ? 'on' : ''}" data-act="retSort" data-s="new">Newest</button><button class="${sort === 'job' ? 'on' : ''}" data-act="retSort" data-s="job">Job code</button></div>`;
+  const row = r => { const it = item(r.item_id); return it ? `<button class="row-i" data-act="addReturn" data-item="${it.id}" data-job="${r.jobcode_id}" data-line="${r.line_id}">
+    <span class="grow"><span class="t">${esc(it.name)}</span><span class="s">${sort === 'job' ? '' : esc(jobLabel(r.jobcode_id)) + ' · '}Cart ${r.cart_id} · ${fmtD(r.at)}${r.note ? ' · ' + esc(r.note) : ''}</span></span><span class="q">${fmtQty(r.qty)}</span></button>` : ''; };
+  let body;
+  if (!list.length) body = `<div class="empty">Nothing matches in ${who === S.user.id ? 'your' : 'their'} past Carts.</div>`;
+  else if (sort === 'job') {
+    const groups = new Map(); for (const r of list) { const k = jobLabel(r.jobcode_id); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
+    body = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, rs]) => `<div class="ret-job">${esc(k)}${jobAddr(rs[0].jobcode_id) ? `<span>${esc(jobAddr(rs[0].jobcode_id))}</span>` : ''}</div>${rs.map(row).join('')}`).join('');
+  } else body = list.map(row).join('');
+  return `<section class="sec"><div class="sec-row"><h2 class="sec-h">${title}</h2>${status}${seg}</div><div class="card flat list">${body}</div></section>`;
+}
+function localReturnMatches(q, who) {
+  const words = norm(q).trim().split(/\s+/).filter(Boolean);
+  return (S.snap.returnable || []).filter(r => r.user_id === who).filter(r => { const it = item(r.item_id) || {};
+    const hay = norm([it.name, it.number, jobLabel(r.jobcode_id), jobAddr(r.jobcode_id), r.cart_id, r.note].join(' ')); return words.every(w => hay.includes(w)); });
+}
+let retSearch = { key: '' }; let retTimer = null;
+function searchReturns() {
+  const c = S.cart; if (!c || c.mode !== 'return' || !c.q.trim()) return;
+  const who = returnWho(); const key = who + '|' + c.q;
+  if (retSearch.key === key && (retSearch.res || retSearch.loading)) return;
+  retSearch = { key, loading: true };
+  clearTimeout(retTimer);
+  retTimer = setTimeout(async () => {
+    try { const res = await rpc('wh_takeout_search', { p_key: S.key, p_user: who, p_q: c.q, p_limit: 50 }); if (retSearch.key === key) retSearch = { key, res }; }
+    catch { if (retSearch.key === key) retSearch = { key, res: localReturnMatches(c.q, who), offline: true }; }
+    if (S.cart && S.cart.mode === 'return') refresh('finder');
+  }, 250);
+}
+ACT.retSort = d => { S.cart.rsort = d.s; refresh('finder'); };
+
 function pickCard(i) {
   return `<div class="pick-card"><span class="grow"><span class="t">${esc(i.name)}</span>
     <span class="s"><span class="num">${esc(i.number || 'new')}</span>${locPath(i.location_id) ? ' · ' + esc(locPath(i.location_id)) : ''} · ${esc(onShelf(i))}</span></span>

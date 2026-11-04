@@ -530,3 +530,9 @@ table.t td { min-width: 64px; }
   #toast { bottom: calc(160px + env(safe-area-inset-bottom)); }
 }
 .rv-row .grow > .tag, .row-i .grow > .tag { align-self: flex-start; }
+
+/* Returns: past Take outs */
+.ret-sort { flex: none; }
+.ret-sort button { min-height: 30px; padding: 0 10px; font-size: 13px; }
+.ret-job { padding: 8px 16px 4px; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--brand-700); background: var(--sunk); border-bottom: 1px solid var(--line-2); }
+.ret-job span { display: block; font-weight: 500; letter-spacing: 0; color: var(--muted); }

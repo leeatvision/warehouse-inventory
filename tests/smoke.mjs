@@ -127,6 +127,19 @@ try {
     await page.waitForSelector('.home'); await page.waitForTimeout(800);
     if (mock.db.items.find(i => i.name.includes('ladder')).status !== 'available') throw new Error('ladder not checked in');
   });
+  await step('returns: recent Take outs, sort by Job code, search past Carts', async () => {
+    await nav(page, 'home'); await tap(page, '.hero'); await tap(page, '[data-act=mode][data-m=return]'); await settle(page);
+    if (!(await page.locator('[data-act=addReturn]').count())) throw new Error('no recent Take outs listed');
+    await tap(page, '[data-act=retSort][data-s=job]'); await settle(page);
+    if (!(await page.locator('.ret-job').count())) throw new Error('no Job code groups');
+    await shot(page, '14b-return-by-job');
+    await page.fill('[data-in=cartQ]', 'smith'); await page.waitForTimeout(900);
+    const t = await page.locator('#finder [data-act=addReturn]').first().innerText().catch(() => '');
+    if (!t) throw new Error('search found no past Take out for smith');
+    await shot(page, '14c-return-search'); await tap(page, '#finder [data-act=addReturn]'); await settle(page);
+    if (!(await page.evaluate(() => S.cart.lines.some(l => l.kind === 'return')))) throw new Error('return line not added');
+    await page.evaluate(() => { S.cart = null; saveCartDraft(); }); await nav(page, 'home');
+  });
   await step('purchase order and receive', async () => {
     await nav(page, 'pos'); await tap(page, '[data-act=editPo]'); await page.fill('[data-f=supplier]', 'Electrical Supply Co');
     await tap(page, '[data-act=edAdd]'); await page.fill('[data-in=ipQ]', 'EMT'); await settle(page); await tap(page, '#ipRes .row-i'); await page.locator('[data-in=edQty]').fill('100');
