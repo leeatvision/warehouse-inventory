@@ -532,8 +532,19 @@ function qrSvg(text, cell = 4) {
   const q = qrcode(0, 'M'); q.addData(String(text)); q.make();
   return q.createSvgTag({ cellSize: cell, margin: 0, scalable: true });
 }
-function printLabels(items) {
-  $('#print').innerHTML = `<div class="labels">${items.map(i => `<div class="label">${qrSvg(i.number)}<div><b>${esc(i.number)}</b><span>${esc(i.name)}</span></div></div>`).join('')}</div>`;
+// Labels for 30-per-sheet address label paper (3 across, 10 down). counts: copies per item id; start: first free label
+// on a partly used sheet (1 to 30), so the used ones are skipped and no paper is wasted.
+const LABELS_PER_SHEET = 30;
+function labelCells(items, { counts = {}, start = 1 } = {}) {
+  const cells = Array.from({ length: Math.max(0, Math.min(LABELS_PER_SHEET, num(start) || 1) - 1) }, () => '<div class="label blank"></div>');
+  for (const i of items) for (let n = 0; n < Math.max(1, num(counts[i.id]) || 1); n++)
+    cells.push(`<div class="label">${qrSvg(i.number)}<div><b>${esc(i.number)}</b><span>${esc(i.name)}</span></div></div>`);
+  return cells;
+}
+function printLabels(items, opts) {
+  const cells = labelCells(items, opts); const sheets = [];
+  for (let k = 0; k < cells.length; k += LABELS_PER_SHEET) sheets.push(`<div class="labels">${cells.slice(k, k + LABELS_PER_SHEET).join('')}</div>`);
+  $('#print').innerHTML = sheets.join('');
   setTimeout(() => window.print(), 50);
 }
 function printHtml(html) { $('#print').innerHTML = `<div class="print-report">${html}</div>`; setTimeout(() => window.print(), 50); }

@@ -181,7 +181,12 @@ try {
   });
   await step('item detail with QR', async () => {
     await tap(page, '.side [data-to=catalogue]'); await page.waitForTimeout(300); await tap(page, '#catList .row-i'); await settle(page); await shot(page, '24-item');
-    await tap(page, '[data-act=close]'); await tap(page, '[data-act=labelMode]'); await tap(page, '[data-act=labelAll]'); await shot(page, '25-labels');
+    await tap(page, '[data-act=close]'); await tap(page, '[data-act=labelMode]'); await tap(page, '[data-act=labelAll]');
+    await page.locator('[data-in=labelN]').first().fill('3'); await page.selectOption('[data-ch=labelStart]', '5'); await settle(page); await shot(page, '25-labels');
+    await page.evaluate(() => { window.print = () => {}; }); await tap(page, '[data-act=printLabels]'); await page.waitForTimeout(200);
+    const lb = await page.evaluate(() => [document.querySelectorAll('#print .label.blank').length, document.querySelectorAll('#print .label:not(.blank)').length, S.params.picked.length]);
+    if (lb[0] !== 4 || lb[1] !== lb[2] + 2) throw new Error('labels: blanks and copies wrong ' + JSON.stringify(lb));
+    await tap(page, '[data-act=labelMode]');
   });
   await step('refresh keeps you signed in and keeps your Cart', async () => {
     await nav(page, 'home'); await tap(page, '.hero'); await page.fill('[data-in=cartQ]', 'emt'); await settle(page); await tap(page, '#finder [data-act=addItem]'); await settle(page);

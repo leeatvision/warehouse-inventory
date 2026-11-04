@@ -714,8 +714,7 @@ SCREENS.catalogue = () => {
         <select class="chip-sel" data-ch="catF" data-f="sort" aria-label="Sort"><option value="">Name</option><option value="number" ${p.sort === 'number' ? 'selected' : ''}>Item number</option><option value="qty" ${p.sort === 'qty' ? 'selected' : ''}>Count</option><option value="changed" ${p.sort === 'changed' ? 'selected' : ''}>Last change</option></select>
         ${isManager() ? `<button class="chip-f ${p.stock === 'archived' ? 'on' : ''}" data-act="catChip" data-k="archived">Recycle bin${binList().length ? ' · ' + binList().length : ''}</button>` : ''}</div>
       ${p.stock === 'archived' ? '<div class="msg info small">Deleted items wait here with their history. Restore one, or delete it forever.</div>' : ''}
-      ${p.labels ? `<div class="msg info row"><span class="grow">Tick items, then print. Labels fit 30-per-sheet address label paper.</span>
-        <button class="btn small" data-act="labelAll">Tick all shown</button><button class="btn small primary" data-act="printLabels">Print ${(p.picked || []).length} labels</button></div>` : ''}
+      ${p.labels ? region('labelBar', labelBarHtml) : ''}
     </div>${region('catList', catListHtml)}`;
   if (desk) return `<div class="cat-desk"><section class="cat-main">${pageHead('Catalogue', actions)}${list}</section>
     <aside class="cat-side" aria-label="Selected item">${region('catSide', catSideHtml)}</aside></div>`;
@@ -796,15 +795,32 @@ function catListHtml() {
         <td class="n nowrap"><b>${i.kind === 'equipment' && !i.counted ? '' : fmtQty(i.qty)}</b> <span class="st ${stockState(i)}">${esc(stockState(i) === 'ok' && !(i.kind === 'equipment' && !i.counted) ? '' : stockWord(i))}</span></td></tr>`).join('')}</tbody></table></div>${more}`;
   }
   return `<p class="muted sub">${plural(list.length, 'item')}</p><div class="card flat list">${shown.map(i =>
-    p.labels ? `<label class="row-i"><input type="checkbox" data-ch="pickLabel" data-id="${i.id}" ${picked.has(i.id) ? 'checked' : ''} class="big-check">
-      <span class="grow"><span class="t">${esc(i.name)}</span><span class="s num">${esc(i.number || 'new')}</span></span></label>` : itemRow(i, 'openItem')).join('')}</div>${more}`;
+    p.labels ? `<div class="row-i lbl-row"><label class="grow lbl-pick"><input type="checkbox" data-ch="pickLabel" data-id="${i.id}" ${picked.has(i.id) ? 'checked' : ''} class="big-check">
+      <span class="grow"><span class="t">${esc(i.name)}</span><span class="s num">${esc(i.number || 'new')}</span></span></label>
+      ${picked.has(i.id) ? `<label class="lbl-n">Copies<input type="number" inputmode="numeric" min="1" max="300" value="${num((p.lcount || {})[i.id]) || 1}" data-in="labelN" data-id="${i.id}" aria-label="Copies of ${esc(i.name)}"></label>` : ''}</div>` : itemRow(i, 'openItem')).join('')}</div>${more}`;
 }
 IN.catQ = v => { S.params.q = v; refresh('catList'); fillPhotos(); };
 CH.catF = (v, d) => { S.params[d.f] = v; refresh('catList'); fillPhotos(); };
-ACT.labelMode = () => { S.params.labels = !S.params.labels; S.params.picked = []; render(); };
-CH.pickLabel = (v, d, el) => { const s = new Set(S.params.picked || []); el.checked ? s.add(d.id) : s.delete(d.id); S.params.picked = [...s]; const b = $('[data-act=printLabels]'); if (b) b.textContent = `Print ${s.size} labels`; };
-ACT.labelAll = () => { S.params.picked = catFiltered().filter(i => i.number).map(i => i.id); render(); };
-ACT.printLabels = () => { const its = (S.params.picked || []).map(item).filter(i => i && i.number); if (!its.length) return toast('Tick some items first'); printLabels(its); };
+ACT.labelMode = () => { S.params.labels = !S.params.labels; S.params.picked = []; S.params.lcount = {}; render(); };
+// The label bar: how many labels and sheets, where on the sheet to start, and printer settings.
+function labelTotal() { const p = S.params; return (p.picked || []).reduce((n, id) => n + (num((p.lcount || {})[id]) || 1), 0); }
+function labelBarHtml() {
+  const p = S.params; const n = labelTotal(); const start = num(p.lstart) || 1;
+  const sheets = n ? Math.ceil((n + start - 1) / LABELS_PER_SHEET) : 0;
+  return `<div class="msg info label-bar"><div class="row"><span class="grow">Tick items and set copies. Labels fit 30-per-sheet address label paper (3 × 10).</span>
+      <button class="btn small" data-act="labelAll">Tick all shown</button></div>
+    <div class="row lb-opts"><label class="lbl-n">Start at label<select data-ch="labelStart">${Array.from({ length: LABELS_PER_SHEET }, (_, k) => `<option value="${k + 1}" ${start === k + 1 ? 'selected' : ''}>${k + 1}</option>`).join('')}</select></label>
+      <span class="muted small grow">${start > 1 ? `Skips the first ${start - 1} on a used sheet (counting across, then down). ` : ''}${n ? `${plural(n, 'label')} on ${plural(sheets, 'sheet')}.` : ''}</span>
+      <button class="btn small primary" data-act="printLabels" ${n ? '' : 'disabled'}>Print ${plural(n, 'label')}</button></div>
+    <details class="lb-help"><summary>Printer settings</summary><p>In the print window: <b>Paper</b> Letter · <b>Margins</b> None or Default · <b>Scale</b> 100% (or Actual size; never Fit to page) ·
+      turn off <b>Headers and footers</b>. Print one test on plain paper and hold it up to a label sheet before using labels.</p></details></div>`;
+}
+CH.pickLabel = (v, d, el) => { const s = new Set(S.params.picked || []); el.checked ? s.add(d.id) : s.delete(d.id); S.params.picked = [...s]; refresh('catList', 'labelBar'); };
+IN.labelN = (v, d) => { S.params.lcount = S.params.lcount || {}; S.params.lcount[d.id] = Math.max(1, Math.min(300, Math.round(num(v)) || 1)); refresh('labelBar'); };
+CH.labelStart = v => { S.params.lstart = num(v) || 1; refresh('labelBar'); };
+ACT.labelAll = () => { S.params.picked = catFiltered().filter(i => i.number).map(i => i.id); refresh('catList', 'labelBar'); };
+ACT.printLabels = () => { const its = (S.params.picked || []).map(item).filter(i => i && i.number); if (!its.length) return toast('Tick some items first');
+  printLabels(its, { counts: S.params.lcount || {}, start: S.params.lstart || 1 }); };
 ACT.catCsv = () => downloadCsv('catalogue.csv', [['Item number', 'Name', 'Type', 'Location', 'Tags', 'On shelf', 'Low-stock level'],
   ...catFiltered().map(i => [i.number, i.name, i.kind, locPath(i.location_id), (i.tags || []).join(', '), i.kind === 'equipment' && !i.counted ? onShelf(i) : fmtQty(i.qty), i.low_stock ?? ''])]);
 function openItem(id) {
