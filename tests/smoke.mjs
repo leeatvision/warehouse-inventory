@@ -186,7 +186,14 @@ try {
     await page.evaluate(() => { window.print = () => {}; }); await tap(page, '[data-act=printLabels]'); await page.waitForTimeout(200);
     const lb = await page.evaluate(() => [document.querySelectorAll('#print .label.blank').length, document.querySelectorAll('#print .label:not(.blank)').length, S.params.picked.length]);
     if (lb[0] !== 4 || lb[1] !== lb[2] + 2) throw new Error('labels: blanks and copies wrong ' + JSON.stringify(lb));
+    await page.selectOption('[data-ch=labelStart]', '1'); await page.selectOption('[data-ch=labelAllN]', '30'); await settle(page); await shot(page, '25b-labels-30-each');
+    await tap(page, '[data-act=printLabels]'); await page.waitForTimeout(200);
+    const all = await page.evaluate(() => [document.querySelectorAll('#print .label:not(.blank)').length, S.params.picked.length, document.querySelectorAll('#print .labels').length]);
+    if (all[0] !== all[1] * 30 || all[2] !== all[1]) throw new Error('copies of each wrong ' + JSON.stringify(all));
     await tap(page, '[data-act=labelMode]');
+    await tap(page, '#catList .row-i'); await settle(page); await tap(page, '.modal [data-act=printOne]'); await settle(page); await shot(page, '25c-print-one');
+    await tap(page, '[data-act=p1Go]'); await page.waitForTimeout(200);
+    if (await page.evaluate(() => document.querySelectorAll('#print .label:not(.blank)').length) !== 30) throw new Error('item page did not print a full sheet');
   });
   await step('refresh keeps you signed in and keeps your Cart', async () => {
     await nav(page, 'home'); await tap(page, '.hero'); await page.fill('[data-in=cartQ]', 'emt'); await settle(page); await tap(page, '#finder [data-act=addItem]'); await settle(page);

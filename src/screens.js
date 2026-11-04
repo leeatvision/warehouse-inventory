@@ -797,19 +797,20 @@ function catListHtml() {
   return `<p class="muted sub">${plural(list.length, 'item')}</p><div class="card flat list">${shown.map(i =>
     p.labels ? `<div class="row-i lbl-row"><label class="grow lbl-pick"><input type="checkbox" data-ch="pickLabel" data-id="${i.id}" ${picked.has(i.id) ? 'checked' : ''} class="big-check">
       <span class="grow"><span class="t">${esc(i.name)}</span><span class="s num">${esc(i.number || 'new')}</span></span></label>
-      ${picked.has(i.id) ? `<label class="lbl-n">Copies<input type="number" inputmode="numeric" min="1" max="300" value="${num((p.lcount || {})[i.id]) || 1}" data-in="labelN" data-id="${i.id}" aria-label="Copies of ${esc(i.name)}"></label>` : ''}</div>` : itemRow(i, 'openItem')).join('')}</div>${more}`;
+      ${picked.has(i.id) ? `<label class="lbl-n">Copies<input type="number" inputmode="numeric" min="1" max="300" value="${num((p.lcount || {})[i.id]) || num(p.lall) || 1}" data-in="labelN" data-id="${i.id}" aria-label="Copies of ${esc(i.name)}"></label>` : ''}</div>` : itemRow(i, 'openItem')).join('')}</div>${more}`;
 }
 IN.catQ = v => { S.params.q = v; refresh('catList'); fillPhotos(); };
 CH.catF = (v, d) => { S.params[d.f] = v; refresh('catList'); fillPhotos(); };
 ACT.labelMode = () => { S.params.labels = !S.params.labels; S.params.picked = []; S.params.lcount = {}; render(); };
 // The label bar: how many labels and sheets, where on the sheet to start, and printer settings.
-function labelTotal() { const p = S.params; return (p.picked || []).reduce((n, id) => n + (num((p.lcount || {})[id]) || 1), 0); }
+function labelTotal() { const p = S.params; return (p.picked || []).reduce((n, id) => n + (num((p.lcount || {})[id]) || num(p.lall) || 1), 0); }
 function labelBarHtml() {
   const p = S.params; const n = labelTotal(); const start = num(p.lstart) || 1;
   const sheets = n ? Math.ceil((n + start - 1) / LABELS_PER_SHEET) : 0;
-  return `<div class="msg info label-bar"><div class="row"><span class="grow">Tick items and set copies. Labels fit 30-per-sheet address label paper (3 × 10).</span>
+  return `<div class="msg info label-bar"><div class="row"><span class="grow">Tick items, then choose how many of each. Labels fit 30-per-sheet address label paper (3 × 10).</span>
       <button class="btn small" data-act="labelAll">Tick all shown</button></div>
-    <div class="row lb-opts"><label class="lbl-n">Start at label<select data-ch="labelStart">${Array.from({ length: LABELS_PER_SHEET }, (_, k) => `<option value="${k + 1}" ${start === k + 1 ? 'selected' : ''}>${k + 1}</option>`).join('')}</select></label>
+    <div class="row lb-opts"><label class="lbl-n">Copies of each<select data-ch="labelAllN">${Array.from({ length: LABELS_PER_SHEET }, (_, k) => `<option value="${k + 1}" ${num(p.lall) === k + 1 ? 'selected' : ''}>${k + 1}</option>`).join('')}</select></label>
+      <label class="lbl-n">Start at label<select data-ch="labelStart">${Array.from({ length: LABELS_PER_SHEET }, (_, k) => `<option value="${k + 1}" ${start === k + 1 ? 'selected' : ''}>${k + 1}</option>`).join('')}</select></label>
       <span class="muted small grow">${start > 1 ? `Skips the first ${start - 1} on a used sheet (counting across, then down). ` : ''}${n ? `${plural(n, 'label')} on ${plural(sheets, 'sheet')}.` : ''}</span>
       <button class="btn small primary" data-act="printLabels" ${n ? '' : 'disabled'}>Print ${plural(n, 'label')}</button></div>
     <details class="lb-help"><summary>Printer settings</summary><p>In the print window: <b>Paper</b> Letter · <b>Margins</b> None or Default · <b>Scale</b> 100% (or Actual size; never Fit to page) ·
@@ -817,10 +818,13 @@ function labelBarHtml() {
 }
 CH.pickLabel = (v, d, el) => { const s = new Set(S.params.picked || []); el.checked ? s.add(d.id) : s.delete(d.id); S.params.picked = [...s]; refresh('catList', 'labelBar'); };
 IN.labelN = (v, d) => { S.params.lcount = S.params.lcount || {}; S.params.lcount[d.id] = Math.max(1, Math.min(300, Math.round(num(v)) || 1)); refresh('labelBar'); };
+// Sets the same number of copies for every ticked item (each can still be changed on its own row).
+CH.labelAllN = v => { const p = S.params; p.lall = num(v) || 1; p.lcount = {}; for (const id of p.picked || []) p.lcount[id] = p.lall; refresh('catList', 'labelBar'); };
 CH.labelStart = v => { S.params.lstart = num(v) || 1; refresh('labelBar'); };
 ACT.labelAll = () => { S.params.picked = catFiltered().filter(i => i.number).map(i => i.id); refresh('catList', 'labelBar'); };
 ACT.printLabels = () => { const its = (S.params.picked || []).map(item).filter(i => i && i.number); if (!its.length) return toast('Tick some items first');
-  printLabels(its, { counts: S.params.lcount || {}, start: S.params.lstart || 1 }); };
+  const p = S.params; const counts = {}; for (const i of its) counts[i.id] = num((p.lcount || {})[i.id]) || num(p.lall) || 1;
+  printLabels(its, { counts, start: p.lstart || 1 }); };
 ACT.catCsv = () => downloadCsv('catalogue.csv', [['Item number', 'Name', 'Type', 'Location', 'Tags', 'On shelf', 'Low-stock level'],
   ...catFiltered().map(i => [i.number, i.name, i.kind, locPath(i.location_id), (i.tags || []).join(', '), i.kind === 'equipment' && !i.counted ? onShelf(i) : fmtQty(i.qty), i.low_stock ?? ''])]);
 function openItem(id) {
@@ -870,7 +874,19 @@ MODALS.item = () => {
   return modal('Item', itemDetail(i), itemActions(i));
 };
 function fieldShow(f, v) { if (f.ftype === 'bool') return v ? 'Yes' : 'No'; if (f.ftype === 'date') return fmtYmd(v); return String(v); }
-ACT.printOne = d => printLabels([item(d.id)]);
+// One item's label: choose how many copies (up to a full sheet of 30) and where to start on the sheet.
+ACT.printOne = d => openModal('printOne', { id: d.id, n: 30, start: 1 });
+MODALS.printOne = () => {
+  const m = S.modal; const i = item(m.id) || {};
+  const opts = (sel, max) => Array.from({ length: max }, (_, k) => `<option value="${k + 1}" ${sel === k + 1 ? 'selected' : ''}>${k + 1}</option>`).join('');
+  return modal(`Print labels: ${esc(i.name || '')}`, `<div class="stack">
+    <label class="f">How many labels<select data-ch="p1" data-f="n">${opts(m.n, 30)}</select><span class="hint">30 fills a whole sheet.</span></label>
+    <label class="f">Start at label<select data-ch="p1" data-f="start">${opts(m.start, 30)}</select><span class="hint">Only for a partly used sheet: 1 is the top-left label, counting across, then down.</span></label>
+    <p class="muted small">${plural(m.n, 'label')} on ${plural(Math.ceil((m.n + m.start - 1) / LABELS_PER_SHEET), 'sheet')}. In the print window use Scale 100% and Margins None.</p></div>`,
+    `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="p1Go">Print ${plural(m.n, 'label')}</button>`);
+};
+CH.p1 = (v, d) => { S.modal[d.f] = num(v) || 1; renderModal(); };
+ACT.p1Go = () => { const m = S.modal; const i = item(m.id); closeModal(); printLabels([i], { counts: { [i.id]: m.n }, start: m.start }); };
 ACT.history = d => { closeModal(); go('reports', { kind: 'flow', item: d.id }); };
 ACT.adjustOne = d => { closeModal(); S.le = S.le || {}; S.le.adjust = { lines: [], note: '' }; go('adjust'); addEdLine('adjust', d.id); };
 CH.addPhoto = async (v, d, el) => {
