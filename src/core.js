@@ -365,7 +365,7 @@ const NAV_GROUPS = [
   ['Jobs and orders', [['picks', 'Pick lists'], ['pos', 'Purchase orders'], ['supplierReturn', 'Supplier returns']]],
   ['Office', [['alerts', 'Alerts'], ['reports', 'Reports'], ['people', 'People and PINs'], ['setup2', 'Locations and fields'], ['status', 'Device and billing']]],
 ];
-const SECTION_OF = { review: 'cart', pick: 'more', count: 'more', countReview: 'more', poEdit: 'more', pickEdit: 'more' };
+const SECTION_OF = { labelPreview: 'catalogue', review: 'cart', pick: 'more', count: 'more', countReview: 'more', poEdit: 'more', pickEdit: 'more' };
 function navSection() { return SECTION_OF[S.screen] || S.screen; }
 function navCount(to) {
   if (to === 'cart') return S.cart && S.cart.lines.length ? S.cart.lines.length : '';
@@ -435,7 +435,7 @@ function rerenderSoft() {
   if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) { updateStatus(); return; }
   if (S.modal) { updateStatus(); return; }
   // Screens holding a draft are left alone; the rest redraw with the new data.
-  const drafts = ['cart', 'review', 'pick', 'count', 'poEdit', 'pickEdit', 'receive', 'adjust', 'supplierReturn', 'reports', 'countReview', 'setup'];
+  const drafts = ['cart', 'review', 'pick', 'count', 'poEdit', 'pickEdit', 'receive', 'adjust', 'supplierReturn', 'reports', 'countReview', 'setup', 'labelPreview'];
   if (drafts.includes(S.screen)) updateStatus(); else render();
 }
 function modal(title, body, footer = '', wide = false, cls = '') {
@@ -541,11 +541,12 @@ function labelCells(items, { counts = {}, start = 1 } = {}) {
     cells.push(`<div class="label">${qrSvg(i.number)}<div><b>${esc(i.number)}</b><span>${esc(i.name)}</span></div></div>`);
   return cells;
 }
-function printLabels(items, opts) {
+// Labels open on a preview screen first: see the sheets, then Print or Cancel back to where you were.
+function printLabels(items, opts = {}) {
   const cells = labelCells(items, opts); const sheets = [];
   for (let k = 0; k < cells.length; k += LABELS_PER_SHEET) sheets.push(`<div class="labels">${cells.slice(k, k + LABELS_PER_SHEET).join('')}</div>`);
-  $('#print').innerHTML = sheets.join('');
-  setTimeout(() => window.print(), 50);
+  S.labelJob = { sheets, count: cells.filter(c => !c.includes('blank')).length, back: S.screen === 'labelPreview' ? 'catalogue' : S.screen, backParams: S.params };
+  go('labelPreview');
 }
 function printHtml(html) { $('#print').innerHTML = `<div class="print-report">${html}</div>`; setTimeout(() => window.print(), 50); }
 function downloadCsv(name, rows) {

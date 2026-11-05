@@ -183,17 +183,21 @@ try {
     await tap(page, '.side [data-to=catalogue]'); await page.waitForTimeout(300); await tap(page, '#catList .row-i'); await settle(page); await shot(page, '24-item');
     await tap(page, '[data-act=close]'); await tap(page, '[data-act=labelMode]'); await tap(page, '[data-act=labelAll]');
     await page.locator('[data-in=labelN]').first().fill('3'); await page.selectOption('[data-ch=labelStart]', '5'); await settle(page); await shot(page, '25-labels');
-    await page.evaluate(() => { window.print = () => {}; }); await tap(page, '[data-act=printLabels]'); await page.waitForTimeout(200);
-    const lb = await page.evaluate(() => [document.querySelectorAll('#print .label.blank').length, document.querySelectorAll('#print .label:not(.blank)').length, S.params.picked.length]);
+    await page.evaluate(() => { window.print = () => {}; }); await tap(page, '[data-act=printLabels]'); await page.waitForSelector('.sheets'); await settle(page);
+    await shot(page, '25d-label-preview'); await tap(page, '[data-act=labelPrint]'); await page.waitForTimeout(200);
+    const lb = await page.evaluate(() => [document.querySelectorAll('#print .label.blank').length, document.querySelectorAll('#print .label:not(.blank)').length, S.labelJob.backParams.picked.length]);
     if (lb[0] !== 4 || lb[1] !== lb[2] + 2) throw new Error('labels: blanks and copies wrong ' + JSON.stringify(lb));
+    await tap(page, '[data-act=labelCancel]'); await page.waitForSelector('#catList');
+    if (!(await page.locator('[data-ch=labelAllN]').count())) throw new Error('Cancel did not go back to the label list');
     await page.selectOption('[data-ch=labelStart]', '1'); await page.selectOption('[data-ch=labelAllN]', '30'); await settle(page); await shot(page, '25b-labels-30-each');
-    await tap(page, '[data-act=printLabels]'); await page.waitForTimeout(200);
-    const all = await page.evaluate(() => [document.querySelectorAll('#print .label:not(.blank)').length, S.params.picked.length, document.querySelectorAll('#print .labels').length]);
+    await tap(page, '[data-act=printLabels]'); await page.waitForSelector('.sheets'); await tap(page, '[data-act=labelPrint]'); await page.waitForTimeout(200);
+    const all = await page.evaluate(() => [document.querySelectorAll('#print .label:not(.blank)').length, S.labelJob.backParams.picked.length, document.querySelectorAll('#print .labels').length]);
     if (all[0] !== all[1] * 30 || all[2] !== all[1]) throw new Error('copies of each wrong ' + JSON.stringify(all));
-    await tap(page, '[data-act=labelMode]');
+    await tap(page, '[data-act=labelCancel]'); await page.waitForSelector('#catList'); await tap(page, '[data-act=labelMode]');
     await tap(page, '#catList .row-i'); await settle(page); await tap(page, '.modal [data-act=printOne]'); await settle(page); await shot(page, '25c-print-one');
-    await tap(page, '[data-act=p1Go]'); await page.waitForTimeout(200);
+    await tap(page, '[data-act=p1Go]'); await page.waitForSelector('.sheets'); await tap(page, '[data-act=labelPrint]'); await page.waitForTimeout(200);
     if (await page.evaluate(() => document.querySelectorAll('#print .label:not(.blank)').length) !== 30) throw new Error('item page did not print a full sheet');
+    await tap(page, '[data-act=labelCancel]'); await page.waitForSelector('#catList');
   });
   await step('refresh keeps you signed in and keeps your Cart', async () => {
     await nav(page, 'home'); await tap(page, '.hero'); await page.fill('[data-in=cartQ]', 'emt'); await settle(page); await tap(page, '#finder [data-act=addItem]'); await settle(page);
@@ -282,6 +286,7 @@ try {
   await step('phone screens', async () => {
     await connect(phone); await shot(phone, '30-phone-signin');
     await signIn(phone, 'Alex Manager', '2468'); await shot(phone, '31-phone-home');
+    if (!(await phone.locator('.bill-card').count())) throw new Error('no Billing PDFs card on phone Home');
     const rows = await phone.locator('.entries-widget .row-i').count();
     if (rows < 1 || rows > 5) throw new Error('phone entries box should show 1 to 5 entries, shows ' + rows);
     if (!(await phone.locator('.entries-widget .row-i').first().innerText()).includes('Alex Manager')) throw new Error('entries box does not say who');

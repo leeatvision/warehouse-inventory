@@ -169,7 +169,7 @@ SCREENS.home = () => {
         </div>
         ${openPicks || myCounts ? `<div class="actions">${openPicks ? card('picks', 'list', 'Pick lists', `${plural(openPicks, 'list')} ready to pick`) : ''}${myCounts ? card('counts', 'box', 'Stock counts', `${plural(myCounts, 'count')} waiting for you`) : ''}</div>` : ''}
         ${alerts.length && !isWide() ? `<button class="banner warn" data-act="go" data-to="alerts">${icon('alert', 20)}<span class="grow">${plural(alerts.length, 'thing needs', 'things need')} a look</span><b>View</b></button>` : ''}
-        ${desk ? deskStats() : ''}
+        ${desk ? deskStats() : isManager() ? billingCard() : ''}
       </div>
       <div class="stack-l">
         ${alerts.length && isWide() ? `<section class="sec"><h2 class="sec-h">Needs a look</h2><div class="card flat list">${alerts.slice(0, 5).map(alertRow).join('')}
@@ -218,6 +218,12 @@ function deskHome({ card, mineOut, openPicks, myCounts, alerts }) {
           'No open pick lists or counts.', picks.length + counts.length)}
       </div>
     </div></div>`;
+}
+// Billing PDFs waiting to go to the billing folder: a compact card on phone and tablet Home (desktop has it in its tiles).
+function billingCard() {
+  const dl = (S.snap && S.snap.delivery) || {};
+  return `<button class="bill-card ${dl.waiting ? 'waiting' : ''}" data-act="go" data-to="status"><span class="grow"><span class="lbl">Billing PDFs</span>
+    <b>${dl.waiting ? `${dl.waiting} waiting to send` : 'Up to date'}</b><span class="s">${dl.last_delivered ? 'Last sent ' + fmtDT(dl.last_delivered) : 'None sent yet'}</span></span>${icon('chevron', 20)}</button>`;
 }
 // Summary cards for Managers on desktop.
 function deskStats() {
@@ -1005,3 +1011,21 @@ ACT.submitCount = async () => {
   await queue('count_save', { id: S.countDraft.id, lines: S.countDraft.lines, status: 'submitted' });
   S.countDraft = null; go('home'); toast('Count sent to the Managers');
 };
+
+// ------------------------------------------------------------------ label print preview
+SCREENS.labelPreview = () => {
+  const j = S.labelJob; if (!j) return pageHead('Labels', '', 'catalogue', 'Catalogue') + '<div class="empty">Nothing to print.</div>';
+  setTimeout(fitSheets);
+  return `${pageHead('Print labels', `<button class="btn" data-act="labelCancel">Cancel</button><button class="btn primary" data-act="labelPrint">Print ${plural(j.count, 'label')}</button>`)}
+    <p class="muted sub">${plural(j.count, 'label')} on ${plural(j.sheets.length, 'sheet')} of 30-per-sheet label paper. In the print window: Paper Letter, Margins None, Scale 100%, Headers and footers off.</p>
+    <div class="sheets">${j.sheets.map((s, k) => `<figure class="sheet-wrap"><div class="sheet-prev">${s}</div><figcaption>Sheet ${k + 1} of ${j.sheets.length}</figcaption></figure>`).join('')}</div>`;
+};
+// Scale the letter-size sheets to fit the screen.
+function fitSheets() {
+  const wrap = $('.sheets'); if (!wrap) return;
+  const z = Math.min(1, (wrap.clientWidth - 2) / 816);
+  for (const el of document.querySelectorAll('.sheet-prev')) el.style.zoom = z;
+}
+window.addEventListener('resize', () => { if (S.screen === 'labelPreview') fitSheets(); });
+ACT.labelPrint = () => { const j = S.labelJob; if (!j) return; $('#print').innerHTML = j.sheets.join(''); setTimeout(() => window.print(), 50); };
+ACT.labelCancel = () => { const j = S.labelJob || {}; S.labelJob = null; go(j.back || 'catalogue', j.backParams || {}); };
