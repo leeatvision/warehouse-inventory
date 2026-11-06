@@ -1,7 +1,8 @@
 /**
  * Warehouse billing delivery. Runs every 5 minutes in the Google account that owns the billing folder.
  * For every Cart and Job code with new or corrected Take outs, it saves one PDF into the folder and moves
- * the previous version of that document to Trash. A cancelled Cart gets no PDF; its earlier PDF goes to Trash. Nothing is marked delivered until the PDF is saved,
+ * the previous version of that document to Trash. A cancelled Cart, or a Job code a Correction emptied, gets no PDF;
+ * its earlier PDF goes to Trash. Only files in the billing folder are ever moved to Trash. Nothing is marked delivered until the PDF is saved,
  * so a failed run is simply retried 5 minutes later.
  *
  * Script properties (Project Settings > Script properties):
@@ -32,8 +33,9 @@ function deliver() {
       if (!docs.length) break;
       for (const d of docs) {
         try {
-          // Cancelled Carts never go to billing: move any earlier PDF of this document to Trash and make no new one.
-          if (d.cancelled) {
+          // Nothing to bill: the Cart was cancelled, or a Correction took every item for this Job code off it.
+          // Move any earlier PDF of this document to Trash and make no new one.
+          if (d.cancelled || !(d.current || []).length) {
             trashOlder_(folder, d, null);
             rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision, p_file_id: null, p_file_name: null, p_error: null });
             continue;
@@ -60,10 +62,21 @@ function docTag_(d) { return 'Billing document D' + d.doc_id; }
 
 // Move every earlier version of this document to Trash, keeping the one just made. Older files were named with
 // "_D457" at the end instead of the tag, so those are found by name.
+function inFolder_(file, folder) {
+  const parents = file.getParents();
+  while (parents.hasNext()) if (parents.next().getId() === folder.getId()) return true;
+  return false;
+}
+
 function trashOlder_(folder, d, keepId) {
   const tag = docTag_(d), suffix = '_D' + d.doc_id + '.pdf';
+  // Only files still in the billing folder are touched. A PDF someone moved elsewhere (e.g. a folder of billed work)
+  // is left where it is; a deleted one is simply skipped.
   if (d.old_file_id && d.old_file_id !== keepId) {
-    try { DriveApp.getFileById(d.old_file_id).setTrashed(true); } catch (e) { /* already gone or moved out of reach */ }
+    try {
+      const f = DriveApp.getFileById(d.old_file_id);
+      if (!f.isTrashed() && inFolder_(f, folder)) f.setTrashed(true);
+    } catch (e) { /* deleted for good, or no longer reachable */ }
   }
   const searches = ['fullText contains "' + tag + '" and trashed = false', 'title contains "_D' + d.doc_id + '" and trashed = false'];
   for (const q of searches) {
