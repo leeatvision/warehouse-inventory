@@ -572,6 +572,28 @@ const Scanner = {
   stop() { clearInterval(this.timer); this.timer = null; if (this.stream) this.stream.getTracks().forEach(t => t.stop()); this.stream = null; },
 };
 
+// ------------------------------------------------------------------ app updates
+// The app opens from the copy kept on the device. It checks for a new version when it opens and whenever it comes back
+// on screen; once the new version is ready it reloads into it, waiting until nobody is typing. Carts and sign-in are
+// saved on the device, so nothing is lost.
+function setupUpdates() {
+  const hadController = !!navigator.serviceWorker.controller; let reloading = false;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const check = () => reg.update().catch(() => { });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    setInterval(check, 30 * 60000);
+  }).catch(() => { });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return; // first install: this page is already the newest
+    const go = () => {
+      const a = document.activeElement;
+      if (S.modal || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) return setTimeout(go, 2000);
+      reloading = true; flushDrafts(); setTimeout(() => location.reload(), 150);
+    };
+    go();
+  });
+}
+
 // ------------------------------------------------------------------ start
 async function boot() {
   try {
@@ -585,7 +607,7 @@ async function boot() {
   if (navigator.storage && navigator.storage.persist) {
     try { S.persisted = await navigator.storage.persisted() || await navigator.storage.persist(); } catch { }
   }
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') setupUpdates();
   history.replaceState({ screen: 'boot' }, '');
   if (!S.key) { go('setup'); return; }
   if (!S.snap) go('setup'); else if (!(await resumeSession())) go('signin');
