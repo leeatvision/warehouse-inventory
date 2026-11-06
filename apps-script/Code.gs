@@ -1,9 +1,10 @@
 /**
  * Warehouse billing delivery. Runs every 5 minutes in the Google account that owns the billing folder.
- * For every Cart and Job code with new or corrected Take outs, it saves one PDF into the folder and moves
- * the previous version of that document to Trash. A cancelled Cart, or a Job code a Correction emptied, gets no PDF;
- * its earlier PDF goes to Trash. Only files in the billing folder are ever moved to Trash. Nothing is marked delivered until the PDF is saved,
- * so a failed run is simply retried 5 minutes later.
+ * For every Cart and Job code with new or corrected Take outs, it saves one PDF and replaces the previous version.
+ * A previous version that is no longer in the billing folder is replaced where it is, unless it is in a "billed"
+ * folder (then it is left alone); either way an email with both versions goes to the address in the PDF settings.
+ * A cancelled Cart, or a Job code a Correction emptied, gets no new PDF. Nothing is marked delivered until the PDF
+ * is saved, so a failed run is simply retried 5 minutes later.
  *
  * Script properties (Project Settings > Script properties):
  *   SUPABASE_URL    https://<project>.supabase.co
@@ -33,19 +34,7 @@ function deliver() {
       if (!docs.length) break;
       for (const d of docs) {
         try {
-          // Nothing to bill: the Cart was cancelled, or a Correction took every item for this Job code off it.
-          // Move any earlier PDF of this document to Trash and make no new one.
-          if (d.cancelled || !(d.current || []).length) {
-            trashOlder_(folder, d, null);
-            rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision, p_file_id: null, p_file_name: null, p_error: null });
-            continue;
-          }
-          const name = d.file_name + '.pdf';
-          const pdf = Utilities.newBlob(buildHtml(d, brand), 'text/html', d.file_name + '.html').getAs('application/pdf').setName(name);
-          const file = folder.createFile(pdf);
-          file.setDescription(docTag_(d));
-          trashOlder_(folder, d, file.getId());
-          rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision, p_file_id: file.getId(), p_file_name: name, p_error: null });
+          deliverOne_(p, folder, brand, d);
         } catch (e) {
           try { rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision, p_file_id: null, p_file_name: null, p_error: String(e && e.message || e) }); } catch (ignored) {}
           throw e; // stop this run; Google emails the account owner about repeated failures
@@ -60,24 +49,92 @@ function deliver() {
 // Every version of a document carries the same tag in its Drive description, e.g. "Billing document D457".
 function docTag_(d) { return 'Billing document D' + d.doc_id; }
 
-// Move every earlier version of this document to Trash, keeping the one just made. Older files were named with
-// "_D457" at the end instead of the tag, so those are found by name.
-function inFolder_(file, folder) {
-  const parents = file.getParents();
-  while (parents.hasNext()) if (parents.next().getId() === folder.getId()) return true;
+// One document. Where the previous version is decides what happens:
+//   in the billing folder        -> replaced there (old one to Trash, new one saved in the billing folder)
+//   moved to another folder that is not a "billed" folder -> replaced in that folder, and an email is sent
+//   in a "billed" folder         -> left alone; the new one is saved in the billing folder, and an email is sent
+//   deleted                      -> the new one is saved in the billing folder, and an email is sent
+// A cancelled Cart, or a Job code a Correction emptied, gets no new PDF (the previous one is still removed where allowed).
+function deliverOne_(p, folder, brand, d) {
+  const old = previousVersion_(d, folder);
+  const nothingToBill = d.cancelled || !(d.current || []).length;
+  const name = d.file_name + '.pdf';
+  const pdf = Utilities.newBlob(buildHtml(d, brand), 'text/html', d.file_name + '.html').getAs('application/pdf').setName(name);
+  const target = old.state === 'moved' && old.parent ? old.parent : folder;
+  let file = null;
+  if (!nothingToBill) { file = target.createFile(pdf); file.setDescription(docTag_(d)); }
+  if ((old.state === 'home' || old.state === 'moved') && old.file) old.file.setTrashed(true);
+  trashOlder_(folder, d, file && file.getId());
+  if (old.state !== 'none' && old.state !== 'home') notify_(brand, d, old, pdf, file, nothingToBill);
+  rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision,
+    p_file_id: file ? file.getId() : null, p_file_name: file ? name : null, p_error: null });
+}
+
+// Where the previous PDF of this document is now: none (first version), home (billing folder), moved (another folder
+// that is not billed), billed, deleted (in Trash) or gone (deleted for good / no longer reachable).
+function previousVersion_(d, folder) {
+  if (!d.old_file_id) return { state: 'none' };
+  let f;
+  try { f = DriveApp.getFileById(d.old_file_id); f.getName(); } catch (e) { return { state: 'gone' }; }
+  if (f.isTrashed()) return { state: 'deleted', file: f };
+  const parents = []; const it = f.getParents(); while (it.hasNext()) parents.push(it.next());
+  if (parents.some(x => x.getId() === folder.getId())) return { state: 'home', file: f, parent: folder };
+  const billed = parents.find(x => inBilledFolder_(x));
+  if (billed) return { state: 'billed', file: f, parent: billed };
+  return { state: 'moved', file: f, parent: parents[0] || null };
+}
+// A folder counts as billed when its name, or the name of a folder above it, contains the word "billed"
+// ("Billed", "Billed 2026", "Jobs - billed"), but not "unbilled" or "not billed".
+function inBilledFolder_(folder) {
+  let f = folder;
+  for (let i = 0; i < 12 && f; i++) {
+    const n = f.getName();
+    if (/\bbilled\b/i.test(n) && !/\bnot[\s_-]*billed\b/i.test(n)) return true;
+    const up = f.getParents(); f = up.hasNext() ? up.next() : null;
+  }
   return false;
 }
 
+// Email the previous and the new version when the previous one was not in the billing folder.
+function notify_(brand, d, old, pdf, file, nothingToBill) {
+  const to = brand.notify_email; if (!to) return;
+  try {
+    let original, originalNote = '';
+    if (old.file) original = old.file.getBlob().setName('Previous - ' + old.file.getName());
+    else {
+      const first = Object.assign({}, d, { corrections: [], current: d.original, cancelled: false, version: 'T1',
+        current_note: d.cart.note, file_name: d.file_name + ' (original, rebuilt)' });
+      original = Utilities.newBlob(buildHtml(first, brand), 'text/html', 'original.html').getAs('application/pdf')
+        .setName('Original (rebuilt) - ' + d.file_name + '.pdf');
+      originalNote = ' The earlier PDF could not be found, so the original Cart is rebuilt from the records.';
+    }
+    const folderName = old.parent ? old.parent.getName() : '?';
+    const where = {
+      moved: 'had been moved to the folder "' + folderName + '". ' +
+        (nothingToBill ? 'It has been moved to Trash; there is nothing left to bill.' : 'It has been replaced there with the corrected version.'),
+      billed: 'is in the billed folder "' + folderName + '", so it was left there. ' +
+        (nothingToBill ? 'Nothing is left to bill on this document: credit what was billed.' : 'The corrected version was saved in the billing folder: bill the difference.'),
+      deleted: 'had been deleted. ' + (nothingToBill ? 'Nothing is left to bill.' : 'The corrected version was saved in the billing folder.'),
+      gone: 'could not be found (deleted or no longer shared). ' + (nothingToBill ? 'Nothing is left to bill.' : 'The corrected version was saved in the billing folder.'),
+    }[old.state];
+    const what = d.cancelled ? 'Cart ' + d.cart.id + ' was cancelled' : nothingToBill ? 'Every item for this Job code was taken off Cart ' + d.cart.id : 'Cart ' + d.cart.id + ' was corrected';
+    const job = (d.job && (d.job.name || d.job.full_name)) || ('Job code ' + (d.job && d.job.id));
+    MailApp.sendEmail({
+      to: to,
+      subject: (nothingToBill ? 'Billing document removed: ' : 'Billing document corrected: ') + job + ' (D' + d.doc_id + ')',
+      htmlBody: '<p>' + esc_(what) + ' (' + esc_(job) + ', document D' + d.doc_id + ').</p><p>The earlier PDF ' + esc_(where) + esc_(originalNote) + '</p>' +
+        (file ? '<p>Corrected PDF: <a href="' + file.getUrl() + '">' + esc_(file.getName()) + '</a></p>' : '') +
+        '<p>Attached: the earlier version and the ' + (nothingToBill ? 'cancellation' : 'corrected') + ' version.</p>',
+      attachments: [original, pdf],
+    });
+  } catch (e) {
+    console.error('Could not send the correction email for D' + d.doc_id + ': ' + (e && e.message || e));
+  }
+}
+
+// Move any other copy of this document still in the billing folder to Trash (older files were named "..._D457").
 function trashOlder_(folder, d, keepId) {
   const tag = docTag_(d), suffix = '_D' + d.doc_id + '.pdf';
-  // Only files still in the billing folder are touched. A PDF someone moved elsewhere (e.g. a folder of billed work)
-  // is left where it is; a deleted one is simply skipped.
-  if (d.old_file_id && d.old_file_id !== keepId) {
-    try {
-      const f = DriveApp.getFileById(d.old_file_id);
-      if (!f.isTrashed() && inFolder_(f, folder)) f.setTrashed(true);
-    } catch (e) { /* deleted for good, or no longer reachable */ }
-  }
   const searches = ['fullText contains "' + tag + '" and trashed = false', 'title contains "_D' + d.doc_id + '" and trashed = false'];
   for (const q of searches) {
     const it = folder.searchFiles(q);
