@@ -64,7 +64,7 @@ const expect = {
   'moved to another folder': [true, ['To check'], true],
   'in a "Billed" sub-folder': [false, ['Warehouse billing'], true],
   'in "Not billed yet"': [true, ['Not billed yet'], true],
-  'deleted (in Trash)': [true, ['Warehouse billing'], true],
+  'deleted (in Trash)': [true, ['Warehouse billing'], false],
   'deleted for good': [null, ['Warehouse billing'], true],
   'cancelled, in billing folder': [true, [], false],
   'cancelled, in Billed': [false, [], true],

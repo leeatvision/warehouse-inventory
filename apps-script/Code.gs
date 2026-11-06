@@ -2,7 +2,8 @@
  * Warehouse billing delivery. Runs every 5 minutes in the Google account that owns the billing folder.
  * For every Cart and Job code with new or corrected Take outs, it saves one PDF and replaces the previous version.
  * A previous version that is no longer in the billing folder is replaced where it is, unless it is in a "billed"
- * folder (then it is left alone); either way an email with both versions goes to the address in the PDF settings.
+ * folder (then it is left alone); either way an email with both versions goes to the address in the PDF settings
+ * (not when the previous version is in Drive's Trash).
  * A cancelled Cart, or a Job code a Correction emptied, gets no new PDF. Nothing is marked delivered until the PDF
  * is saved, so a failed run is simply retried 5 minutes later.
  *
@@ -53,7 +54,8 @@ function docTag_(d) { return 'Billing document D' + d.doc_id; }
 //   in the billing folder        -> replaced there (old one to Trash, new one saved in the billing folder)
 //   moved to another folder that is not a "billed" folder -> replaced in that folder, and an email is sent
 //   in a "billed" folder         -> left alone; the new one is saved in the billing folder, and an email is sent
-//   deleted                      -> the new one is saved in the billing folder, and an email is sent
+//   in Drive's Trash             -> the new one is saved in the billing folder (no email)
+//   deleted for good / not found -> the new one is saved in the billing folder, and an email is sent
 // A cancelled Cart, or a Job code a Correction emptied, gets no new PDF (the previous one is still removed where allowed).
 function deliverOne_(p, folder, brand, d) {
   const old = previousVersion_(d, folder);
@@ -65,7 +67,8 @@ function deliverOne_(p, folder, brand, d) {
   if (!nothingToBill) { file = target.createFile(pdf); file.setDescription(docTag_(d)); }
   if ((old.state === 'home' || old.state === 'moved') && old.file) old.file.setTrashed(true);
   trashOlder_(folder, d, file && file.getId());
-  if (old.state !== 'none' && old.state !== 'home') notify_(brand, d, old, pdf, file, nothingToBill);
+  // No email when the previous PDF is in the billing folder or in Drive's Trash (someone threw it away on purpose).
+  if (old.state !== 'none' && old.state !== 'home' && old.state !== 'deleted') notify_(brand, d, old, pdf, file, nothingToBill);
   rpc_(p, 'wh_delivery_confirm', { p_token: p.DELIVERY_TOKEN, p_doc: d.doc_id, p_revision: d.revision,
     p_file_id: file ? file.getId() : null, p_file_name: file ? name : null, p_error: null });
 }
