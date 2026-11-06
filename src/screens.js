@@ -920,6 +920,8 @@ MODALS.editItem = () => {
       ${x.kind === 'equipment' ? `<label class="check"><input type="checkbox" data-ch="draft" data-f="counted" ${x.counted ? 'checked' : ''}> Counted type (e.g. 12 scaffold frames), not one individual piece</label>` : ''}
       <p class="hint">The Item number is given automatically and never changes.</p>` : ''}
     <label class="f">Name<input type="text" value="${esc(x.name)}" data-in="draft" data-f="name" data-autofocus></label>
+    ${m.isNew && !m.onSaved && !(x.kind === 'equipment' && !x.counted) ? `<label class="f">Starting count<input type="number" inputmode="decimal" min="0" step="any" value="${esc(x.start ?? '')}" data-in="draft" data-f="start" placeholder="How many are on the shelf now">
+      <span class="hint">Saved as an Initial count, so it shows in the item's history. Leave blank to count it later.</span></label>` : ''}
     <div class="grid2">
       <label class="f">Location<select data-ch="draft" data-f="location_id"><option value="">None</option>${locs.map(l => `<option value="${l.id}" ${x.location_id === l.id ? 'selected' : ''}>${esc(locPath(l.id))}</option>`).join('')}</select></label>
       <label class="f">Low-stock level<input type="number" inputmode="decimal" value="${esc(x.low_stock)}" data-in="draft" data-f="low_stock" placeholder="No alert"></label>
@@ -927,7 +929,8 @@ MODALS.editItem = () => {
     <label class="f">Tags (comma between)<input type="text" value="${esc((x.tags || []).join(', '))}" data-in="draftTags"></label>
     <label class="f">Notes<textarea data-in="draft" data-f="description" rows="2">${esc(x.description)}</textarea></label>
     ${fields.map(f => fieldInput(f, x.custom[f.id])).join('')}
-    ${m.isNew ? `<p class="hint">${m.onSaved ? 'After saving, it is added to your list.' : 'After saving, use Adjust counts to enter how many are on the shelf.'}</p>` : ''}`,
+    ${m.isNew && m.onSaved ? `<p class="hint">After saving, it is added to your list.</p>` : ''}
+`,
     `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="saveItem">Save</button>`);
 };
 function fieldInput(f, v) {
@@ -948,7 +951,10 @@ ACT.saveItem = async () => {
   const onSaved = S.modal.onSaved;
   await queue('item_save', data); closeModal();
   if (onSaved) { onSaved(x.id); toast('Added to the Catalogue and to your list'); return; }
-  toast(isNew ? 'Item added. Use Adjust counts to enter how many there are.' : 'Saved', 3500);
+  // A starting count is recorded as an Initial count adjustment, right after the item itself.
+  const start = isNew && !onSaved && x.start !== undefined && String(x.start).trim() !== '' && !(x.kind === 'equipment' && !x.counted) ? num(x.start) : null;
+  if (start !== null && start >= 0) await queue('adjustment', { note: '', lines: [{ item_id: x.id, qty: start, note: '', reason: 'Initial count' }] });
+  toast(isNew ? (start !== null ? `Item added with ${fmtQty(start)} on the shelf` : 'Item added. Use Adjust counts when you know how many there are.') : 'Saved', 3500);
   if (S.screen === 'catalogue' && isDesk()) S.params.sel = x.id;
   render();
 };

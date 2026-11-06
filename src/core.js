@@ -104,9 +104,10 @@ async function queue(op, data, userId) {
   return o;
 }
 
-let syncTimer = null;
+let syncTimer = null; let syncAgain = false;
 async function sync({ full = false } = {}) {
-  if (S.syncing || !S.key) return;
+  if (!S.key) return;
+  if (S.syncing) { syncAgain = true; return; } // something was queued mid-sync: go again as soon as this one ends
   S.syncing = true; updateStatus();
   try {
     const pending = S.outbox.slice().sort((a, b) => a.queued - b.queued);
@@ -136,6 +137,7 @@ async function sync({ full = false } = {}) {
     if (e.keyRejected) { S.key = null; await DB.del('kv', 'device_key'); S.setupMsg = 'The device key was not accepted. Enter it again.'; go('setup'); }
   } finally {
     S.syncing = false; updateStatus();
+    if (syncAgain) { syncAgain = false; if (S.outbox.length && !S.lastError) setTimeout(() => sync(), 0); }
   }
 }
 async function loadJobs() {

@@ -217,6 +217,13 @@ try {
     await page.locator('[data-in=edQty]').fill('4'); await tap(page, '[data-act=saveLe][data-key=receive]'); await page.waitForSelector('.home'); await page.waitForTimeout(800);
     if (!mock.db.items.some(i => i.name === 'Test widget' && i.qty === 4)) throw new Error('new item not received');
   });
+  await step('new item with a starting count', async () => {
+    await nav(page, 'catalogue'); await tap(page, '[data-act=newItem]'); await page.fill('[data-in=draft][data-f=name]', 'Starter fitting');
+    await page.fill('[data-in=draft][data-f=start]', '7'); await shot(page, '24c-new-item-start'); await tap(page, '[data-act=saveItem]'); await page.waitForTimeout(1200);
+    const it = mock.db.items.find(i => i.name === 'Starter fitting');
+    if (!it || it.qty !== 7) throw new Error('starting count not saved: ' + (it && it.qty));
+    const led = mock.db.ledger.find(l => l.item_id === it.id && l.kind === 'adjust'); if (!led || led.delta !== 7) throw new Error('no Initial count in history');
+  });
   await step('adjust shows the change', async () => {
     await page.evaluate(() => { S.le = {}; }); await nav(page, 'adjust'); await tap(page, '[data-act=edAdd]'); await page.fill('[data-in=ipQ]', 'Test widget'); await settle(page); await tap(page, '#ipRes .row-i');
     await page.locator('[data-in=edQty]').fill('6'); const t = await page.locator('#chg-0').innerText(); if (t !== 'Change +2') throw new Error('change shown as ' + t);
