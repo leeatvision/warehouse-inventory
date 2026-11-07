@@ -42,12 +42,17 @@ for (const f of brand.files || []) {
 const config = { ...brand, version };
 writeFileSync(join(out, 'config.js'), 'window.WH_BRAND = ' + JSON.stringify(config, null, 2) + ';\n');
 writeFileSync(join(out, 'manifest.webmanifest'), JSON.stringify({
+  // An explicit id keeps this app separate from other apps installed from the same website (e.g. other repos on
+  // the same github.io address), however the browser resolves it.
+  id: './?app=' + encodeURIComponent(brand.storagePrefix || 'warehouse'),
   name: brand.name, short_name: brand.shortName, description: brand.description || '',
   start_url: './', scope: './', display: 'standalone', orientation: 'any',
   background_color: brand.backgroundColor, theme_color: brand.themeColor,
   icons: [
-    { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-    { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+    { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+    { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
 }, null, 2));
 
